@@ -104,6 +104,25 @@ extension VideoPlayerViewController: PlayerControlsViewDelegate {
         player?.seek(to:CMTimeRangeGetEnd(livePosition))
         playerControlsView.updateLiveState(with: true)
     }
+
+    func openABLoopManager() {
+        guard let player = player else { return }
+        invalidateControlsHiddenTimer()
+        pausePlayer()
+
+        let frameRate = getVideoFrameRate()
+        let currentTime = player.currentTime()
+        let videoIdentifier = viewModel.url?.absoluteString ?? ""
+
+        let abLoopVC = ABLoopViewController(
+            abLoopManager: abLoopManager,
+            videoIdentifier: videoIdentifier,
+            frameRate: frameRate,
+            currentTime: currentTime
+        )
+        abLoopVC.delegate = self
+        coordinator.navigationController.presentedViewController?.present(abLoopVC, animated: true)
+    }
 }
 
 // MARK: - Subtitle Functionality
