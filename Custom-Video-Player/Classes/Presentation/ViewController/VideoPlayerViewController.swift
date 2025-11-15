@@ -5,7 +5,8 @@ import AVFoundation
 public class VideoPlayerViewController: UIViewController {
     let viewModel: VideoPlayerViewModel
     let coordinator: VideoPlayerCoordinator
-    
+    let abLoopManager = ABLoopManager()
+
     private var periodicTimeObserver: Any?
     private var didSetupControls: Bool = false
     private var controlsHiddenTimer: Timer?
@@ -60,6 +61,7 @@ public class VideoPlayerViewController: UIViewController {
         resetOrientation(UIInterfaceOrientationMask.landscapeRight)
         UIViewController.attemptRotationToDeviceOrientation()
         NotificationCenter.default.addObserver(self, selector: #selector(appMovedToBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        abLoopManager.delegate = self
         addLoader()
         setupPlayer()
     }
@@ -216,6 +218,16 @@ extension VideoPlayerViewController {
             if self.player?.currentItem?.status == .readyToPlay {
                 self.playerControlsView.seekBarValue = Float(time.seconds)
                 self.playerControlsView.currentTimeLabelText = time.durationText + "/"
+
+                // Check for A-B loop
+                if let loopSeekTime = self.abLoopManager.shouldLoop(at: time) {
+                    self.player?.seek(to: loopSeekTime, toleranceBefore: CMTime.zero, toleranceAfter: CMTime.zero)
+                }
+
+                // Check for segment playlist advancement
+                if let segmentSeekTime = self.abLoopManager.shouldAdvanceSegment(at: time) {
+                    self.player?.seek(to: segmentSeekTime, toleranceBefore: CMTime.zero, toleranceAfter: CMTime.zero)
+                }
             }
         }
     }
@@ -328,6 +340,62 @@ extension VideoPlayerViewController {
     
     private func disableGestureRecognizers() {
         view.gestureRecognizers?.removeAll()
+    }
+}
+
+// MARK: - A-B Loop Functionality
+
+extension VideoPlayerViewController {
+    /// Gets the frame rate of the currently playing video
+    ///
+    /// - Returns: Frame rate as Double, defaults to 30.0 if unavailable
+    func getVideoFrameRate() -> Double {
+        guard let track = playerItem?.asset.tracks(withMediaType: .video).first else {
+            return 30.0 // Default frame rate
+        }
+        return Double(track.nominalFrameRate)
+    }
+}
+
+// MARK: - ABLoopViewControllerDelegate
+
+extension VideoPlayerViewController: ABLoopViewControllerDelegate {
+    func didSelectABLoop(_ loop: ABLoop?) {
+        abLoopManager.setActiveLoop(loop)
+        if loop != nil {
+            abLoopManager.setActiveSegmentPlaylist(nil)
+        }
+        resumePlayer()
+        resetControlsHiddenTimer()
+    }
+
+    func didSelectSegmentPlaylist(_ playlist: SegmentPlaylist?) {
+        abLoopManager.setActiveSegmentPlaylist(playlist)
+        if playlist != nil {
+            abLoopManager.setActiveLoop(nil)
+        }
+        resumePlayer()
+        resetControlsHiddenTimer()
+    }
+
+    func didRequestSeek(to time: CMTime) {
+        player?.seek(to: time, toleranceBefore: CMTime.zero, toleranceAfter: CMTime.zero)
+    }
+}
+
+// MARK: - ABLoopManagerDelegate
+
+extension VideoPlayerViewController: ABLoopManagerDelegate {
+    func abLoopDidReachEnd(_ loop: ABLoop) {
+        // Optional: Add visual feedback or logging when loop repeats
+    }
+
+    func segmentPlaylistDidFinishSegment(_ segment: PlaybackSegment) {
+        // Optional: Add visual feedback or logging when segment finishes
+    }
+
+    func segmentPlaylistDidComplete(_ playlist: SegmentPlaylist) {
+        // Optional: Add visual feedback or logging when playlist completes
     }
 }
 

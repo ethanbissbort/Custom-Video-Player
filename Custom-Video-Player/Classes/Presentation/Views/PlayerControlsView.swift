@@ -14,6 +14,7 @@ import SnapKit
     func switchSubtitles()
     func openSettings()
     func seekToLive()
+    func openABLoopManager()
 }
 
 /// Custom view for player controls.
@@ -33,7 +34,16 @@ class PlayerControlsView: UIView {
     private let settingsButton = UIButton().configure {
         $0.setImage(VideoPlayerImage.settingsButton.uiImage, for: .normal)
     }
-    
+
+    private let abLoopButton = UIButton().configure {
+        $0.setTitle("A-B", for: .normal)
+        $0.titleLabel?.font = FontUtility.helveticaNeueBold(ofSize: 14)
+        $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
+        $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor.withAlphaComponent(0.7)
+        $0.layer.cornerRadius = 4
+        $0.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+    }
+
     // MARK: - Controls on Middle
     
     private let previousVideoButton = UIButton().configure {
@@ -209,20 +219,26 @@ extension PlayerControlsView {
     private func setupViews() {
         // Setting up controls on top
         addSubview(backButton)
+        addSubview(abLoopButton)
         addSubview(subtitleButton)
         addSubview(settingsButton)
-        
+
         // Setting constraints for controls on top
         backButton.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(CGFloat.space24)
             make.leading.equalToSuperview().offset(dynamicSpacing)
         }
-        
+
+        abLoopButton.snp.makeConstraints { make in
+            make.top.equalTo(backButton.snp.top)
+            make.trailing.equalTo(subtitleButton.snp.leading).offset(-CGFloat.space8)
+        }
+
         subtitleButton.snp.makeConstraints { make in
             make.top.equalTo(backButton.snp.top)
             make.trailing.equalTo(settingsButton.snp.leading).offset(-CGFloat.space8)
         }
-        
+
         settingsButton.snp.makeConstraints { make in
             make.top.equalTo(backButton.snp.top)
             make.trailing.equalToSuperview().offset(-dynamicSpacing)
@@ -346,6 +362,7 @@ extension PlayerControlsView {
         subtitleButton.addTarget(self, action: #selector(subtitleButtonTap), for: .touchUpInside)
         settingsButton.addTarget(self, action: #selector(settingsButtonTap), for: .touchUpInside)
         liveButton.addTarget(self, action: #selector(seekLiveButtonTap), for: .touchUpInside)
+        abLoopButton.addTarget(self, action: #selector(abLoopButtonTap), for: .touchUpInside)
     }
     
     // MARK: - Control Event Handlers
@@ -388,6 +405,10 @@ extension PlayerControlsView {
     
     @IBAction private func seekLiveButtonTap() {
         delegate?.seekToLive()
+    }
+
+    @IBAction private func abLoopButtonTap(_: UIButton) {
+        delegate?.openABLoopManager()
     }
 }
 

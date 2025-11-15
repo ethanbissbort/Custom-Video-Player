@@ -44,6 +44,9 @@ Custom-Video-Player/
 4. **Video Quality Selection** - Dynamic quality switching
 5. **Live Stream Support** - HLS live streaming capabilities
 6. **Error Handling** - Robust error detection and user feedback
+7. **A-B Repeat Loop** - Loop between precise A and B points with frame-level accuracy
+8. **Segment Playlists** - Create playlists of video segments for custom viewing sequences
+9. **Timecode Input** - Enter precise timestamps down to frame number (HH:MM:SS:FF)
 
 ### Main Classes
 
@@ -53,6 +56,10 @@ Custom-Video-Player/
 - `SubtitleSelectionViewController` - UI for subtitle selection
 - `QualitySelectionViewController` - UI for quality selection
 - `PlayerControlsView` - Custom playback control UI
+- `ABLoopManager` - Manages A-B loops and segment playlists with persistence
+- `ABLoopViewController` - UI for managing A-B loops and segment playlists
+- `ABLoopCreationViewController` - UI for creating new A-B loops
+- `TimecodeInputView` - Custom input view for frame-accurate timecode entry
 
 ## Data Models
 
@@ -76,12 +83,78 @@ Video(
 ### VideoPlayerConfig
 Configuration object to initialize the player with a playlist.
 
+### A-B Loop Models
+
+#### TimePoint
+Represents a precise timestamp with frame-level accuracy:
+```swift
+TimePoint(
+    hours: Int,
+    minutes: Int,
+    seconds: Int,
+    frames: Int,
+    frameRate: Double
+)
+```
+
+#### ABLoop
+Represents a single A-B loop:
+```swift
+ABLoop(
+    id: UUID,
+    pointA: TimePoint,    // Start point
+    pointB: TimePoint,    // End point
+    name: String?         // Optional name
+)
+```
+
+#### PlaybackSegment
+Represents a segment in a segment playlist:
+```swift
+PlaybackSegment(
+    id: UUID,
+    startPoint: TimePoint,
+    endPoint: TimePoint,
+    order: Int,
+    name: String?
+)
+```
+
+#### SegmentPlaylist
+Represents a playlist of segments for sequential playback:
+```swift
+SegmentPlaylist(
+    id: UUID,
+    name: String,
+    segments: [PlaybackSegment],
+    videoIdentifier: String,
+    isLooping: Bool       // Loop entire playlist
+)
+```
+
 ## Usage Pattern
 
+### Basic Video Playback
 1. Create a `VideoPlaylist` with videos
 2. Create a `VideoPlayerConfig` with the playlist
 3. Initialize `VideoPlayerCoordinator` with navigation controller
 4. Call `coordinator.invoke(videoPlayerConfig: config)`
+
+### Using A-B Loop Features
+1. Tap the "A-B" button in the player controls
+2. Create a new A-B loop by:
+   - Entering timecodes manually (HH:MM:SS:FF format)
+   - Using "Set to Current Time" buttons for point A and B
+3. Saved loops are automatically persisted per video
+4. Activate a loop by selecting it from the list
+5. Deactivate by tapping "Stop Loop"
+
+### Using Segment Playlists
+1. Access the A-B Loop manager
+2. Switch to "Segment Playlists" tab
+3. Create a segment playlist with multiple A-B points
+4. Segments play sequentially (A→B, then C→D, etc.)
+5. Optional: Enable looping to repeat the entire playlist
 
 ## Development Guidelines
 
@@ -130,3 +203,8 @@ Supports iOS 11.0+
 - HLS (.m3u8) streams are the primary format
 - Error handling is centralized in `VideoPlayerViewController+ErrorHandling.swift`
 - Delegate pattern used in `VideoPlayerViewController+Delegate.swift`
+- A-B loop data is persisted using UserDefaults via `ABLoopManager`
+- Frame-accurate seeking uses CMTime with tolerance set to zero
+- Timecode format follows industry standard: HH:MM:SS:FF (hours:minutes:seconds:frames)
+- Video frame rate is automatically detected from AVAsset track properties
+- Periodic time observer checks for loop/segment transitions every second
