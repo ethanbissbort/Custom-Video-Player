@@ -14,29 +14,19 @@ class ABLoopViewController: UIViewController {
     // MARK: - Properties
 
     weak var delegate: ABLoopViewControllerDelegate?
-    private let abLoopManager: ABLoopManager
-    private let videoIdentifier: String
+    private let viewModel: ABLoopViewModel
     private let frameRate: Double
     private var currentPlayerTime: CMTime
-
-    private var abLoops: [ABLoop] = []
-    private var segmentPlaylists: [SegmentPlaylist] = []
-    private var selectedMode: Mode = .abLoop
-
-    private enum Mode {
-        case abLoop
-        case segmentPlaylist
-    }
 
     // MARK: - UI Components
 
     private let containerView = UIView().configure {
         $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.95)
-        $0.layer.cornerRadius = 12
+        $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
     }
 
     private let titleLabel = UILabel().configure {
-        $0.text = "A-B Loop & Segments"
+        $0.text = ABLoopConstants.Strings.abLoopTitle
         $0.font = FontUtility.helveticaNeueBold(ofSize: 20)
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
         $0.textAlignment = .center
@@ -48,13 +38,18 @@ class ABLoopViewController: UIViewController {
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
     }
 
-    private let segmentedControl = UISegmentedControl(items: ["A-B Loops", "Segment Playlists"]).configure {
-        $0.selectedSegmentIndex = 0
-        $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.5)
-        $0.selectedSegmentTintColor = VideoPlayerColor(palette: .red).uiColor
-        $0.setTitleTextAttributes([.foregroundColor: VideoPlayerColor(palette: .white).uiColor], for: .normal)
-        $0.setTitleTextAttributes([.foregroundColor: VideoPlayerColor(palette: .white).uiColor], for: .selected)
-    }
+    private lazy var segmentedControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: [
+            ABLoopConstants.Strings.abLoopsSegment,
+            ABLoopConstants.Strings.segmentPlaylistsSegment
+        ])
+        control.selectedSegmentIndex = 0
+        control.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.5)
+        control.selectedSegmentTintColor = VideoPlayerColor(palette: .red).uiColor
+        control.setTitleTextAttributes([.foregroundColor: VideoPlayerColor(palette: .white).uiColor], for: .normal)
+        control.setTitleTextAttributes([.foregroundColor: VideoPlayerColor(palette: .white).uiColor], for: .selected)
+        return control
+    }()
 
     private let tableView = UITableView().configure {
         $0.backgroundColor = .clear
@@ -62,28 +57,26 @@ class ABLoopViewController: UIViewController {
         $0.separatorColor = VideoPlayerColor(palette: .pearlWhite).uiColor.withAlphaComponent(0.3)
     }
 
-    private let createABLoopButton = UIButton().configure {
-        $0.setTitle("+ Create New A-B Loop", for: .normal)
+    private let createButton = UIButton().configure {
         $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 16)
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor
-        $0.layer.cornerRadius = 8
+        $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
     }
 
     private let stopLoopButton = UIButton().configure {
-        $0.setTitle("Stop Loop", for: .normal)
+        $0.setTitle(ABLoopConstants.Strings.stopLoop, for: .normal)
         $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 16)
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.5)
-        $0.layer.cornerRadius = 8
+        $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
         $0.isHidden = true
     }
 
     // MARK: - Initialization
 
     init(abLoopManager: ABLoopManager, videoIdentifier: String, frameRate: Double, currentTime: CMTime) {
-        self.abLoopManager = abLoopManager
-        self.videoIdentifier = videoIdentifier
+        self.viewModel = ABLoopViewModel(abLoopManager: abLoopManager, videoIdentifier: videoIdentifier)
         self.frameRate = frameRate
         self.currentPlayerTime = currentTime
         super.init(nibName: nil, bundle: nil)
@@ -102,7 +95,7 @@ class ABLoopViewController: UIViewController {
         setupViews()
         setupTableView()
         setupActions()
-        loadData()
+        updateUI()
     }
 
     // MARK: - Setup
@@ -115,13 +108,13 @@ class ABLoopViewController: UIViewController {
         containerView.addSubview(closeButton)
         containerView.addSubview(segmentedControl)
         containerView.addSubview(tableView)
-        containerView.addSubview(createABLoopButton)
+        containerView.addSubview(createButton)
         containerView.addSubview(stopLoopButton)
 
         containerView.snp.makeConstraints { make in
             make.center.equalToSuperview()
-            make.width.equalTo(600)
-            make.height.equalTo(500)
+            make.width.equalTo(ABLoopConstants.UI.containerWidth)
+            make.height.equalTo(ABLoopConstants.UI.containerHeight)
         }
 
         titleLabel.snp.makeConstraints { make in
@@ -146,20 +139,20 @@ class ABLoopViewController: UIViewController {
         tableView.snp.makeConstraints { make in
             make.top.equalTo(segmentedControl.snp.bottom).offset(CGFloat.space16)
             make.leading.trailing.equalToSuperview()
-            make.bottom.equalTo(createABLoopButton.snp.top).offset(-CGFloat.space16)
+            make.bottom.equalTo(createButton.snp.top).offset(-CGFloat.space16)
         }
 
         stopLoopButton.snp.makeConstraints { make in
             make.leading.equalToSuperview().offset(CGFloat.space16)
             make.bottom.equalToSuperview().offset(-CGFloat.space16)
-            make.height.equalTo(44)
+            make.height.equalTo(ABLoopConstants.UI.buttonHeight)
             make.width.equalTo(120)
         }
 
-        createABLoopButton.snp.makeConstraints { make in
+        createButton.snp.makeConstraints { make in
             make.trailing.equalToSuperview().offset(-CGFloat.space16)
             make.bottom.equalToSuperview().offset(-CGFloat.space16)
-            make.height.equalTo(44)
+            make.height.equalTo(ABLoopConstants.UI.buttonHeight)
             make.width.equalTo(200)
         }
     }
@@ -172,7 +165,7 @@ class ABLoopViewController: UIViewController {
 
     private func setupActions() {
         closeButton.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
-        createABLoopButton.addTarget(self, action: #selector(createButtonTapped), for: .touchUpInside)
+        createButton.addTarget(self, action: #selector(createButtonTapped), for: .touchUpInside)
         stopLoopButton.addTarget(self, action: #selector(stopLoopButtonTapped), for: .touchUpInside)
         segmentedControl.addTarget(self, action: #selector(segmentedControlChanged), for: .valueChanged)
 
@@ -181,17 +174,12 @@ class ABLoopViewController: UIViewController {
         view.addGestureRecognizer(tapGesture)
     }
 
-    private func loadData() {
-        abLoops = abLoopManager.getABLoops(for: videoIdentifier)
-        segmentPlaylists = abLoopManager.getSegmentPlaylists(for: videoIdentifier)
-        tableView.reloadData()
-        updateStopButtonVisibility()
-    }
+    // MARK: - UI Updates
 
-    private func updateStopButtonVisibility() {
-        let hasActiveLoop = abLoopManager.getActiveLoop() != nil
-        let hasActivePlaylist = abLoopManager.getActiveSegmentPlaylist() != nil
-        stopLoopButton.isHidden = !hasActiveLoop && !hasActivePlaylist
+    private func updateUI() {
+        createButton.setTitle(viewModel.createButtonTitle, for: .normal)
+        stopLoopButton.isHidden = !viewModel.hasActiveLoopOrPlaylist
+        tableView.reloadData()
     }
 
     // MARK: - Actions
@@ -201,26 +189,24 @@ class ABLoopViewController: UIViewController {
     }
 
     @objc private func createButtonTapped() {
-        if selectedMode == .abLoop {
-            showCreateABLoopDialog()
-        } else {
-            showCreateSegmentPlaylistDialog()
+        switch viewModel.currentMode {
+        case .abLoop:
+            presentABLoopCreationDialog()
+        case .segmentPlaylist:
+            presentSegmentPlaylistCreationDialog()
         }
     }
 
     @objc private func stopLoopButtonTapped() {
         delegate?.didSelectABLoop(nil)
         delegate?.didSelectSegmentPlaylist(nil)
-        updateStopButtonVisibility()
+        updateUI()
     }
 
     @objc private func segmentedControlChanged() {
-        selectedMode = segmentedControl.selectedSegmentIndex == 0 ? .abLoop : .segmentPlaylist
-        tableView.reloadData()
-        createABLoopButton.setTitle(
-            selectedMode == .abLoop ? "+ Create New A-B Loop" : "+ Create Segment Playlist",
-            for: .normal
-        )
+        let newMode: ABLoopViewMode = segmentedControl.selectedSegmentIndex == 0 ? .abLoop : .segmentPlaylist
+        viewModel.switchMode(to: newMode)
+        updateUI()
     }
 
     @objc private func backgroundTapped(_ gesture: UITapGestureRecognizer) {
@@ -232,12 +218,12 @@ class ABLoopViewController: UIViewController {
 
     // MARK: - Helper Methods
 
-    private func showCreateABLoopDialog() {
+    private func presentABLoopCreationDialog() {
         let alert = ABLoopCreationViewController(
             frameRate: frameRate,
             currentTime: currentPlayerTime,
-            videoIdentifier: videoIdentifier,
-            abLoopManager: abLoopManager
+            videoIdentifier: viewModel.videoIdentifier,
+            abLoopManager: viewModel.abLoopManager
         )
         alert.delegate = self
         alert.modalPresentationStyle = .overFullScreen
@@ -245,14 +231,17 @@ class ABLoopViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    private func showCreateSegmentPlaylistDialog() {
-        // This would open a more complex UI for creating segment playlists
-        // For now, we'll show a simple alert
-        let alert = UIAlertController(title: "Create Segment Playlist", message: "This feature allows you to create a playlist of video segments. Add multiple A-B points to create a custom viewing sequence.", preferredStyle: .alert)
+    private func presentSegmentPlaylistCreationDialog() {
+        let alert = UIAlertController(
+            title: "Create Segment Playlist",
+            message: "This feature allows you to create a playlist of video segments. Add multiple A-B points to create a custom viewing sequence.",
+            preferredStyle: .alert
+        )
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
 
+    /// Updates the current player time (called from parent when time changes)
     func updateCurrentTime(_ time: CMTime) {
         currentPlayerTime = time
     }
@@ -262,20 +251,25 @@ class ABLoopViewController: UIViewController {
 
 extension ABLoopViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return selectedMode == .abLoop ? abLoops.count : segmentPlaylists.count
+        return viewModel.itemCount
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "ABLoopCell", for: indexPath) as! ABLoopTableViewCell
 
-        if selectedMode == .abLoop {
-            let loop = abLoops[indexPath.row]
-            let isActive = abLoopManager.getActiveLoop()?.id == loop.id
-            cell.configure(with: loop, isActive: isActive)
-        } else {
-            let playlist = segmentPlaylists[indexPath.row]
-            let isActive = abLoopManager.getActiveSegmentPlaylist()?.id == playlist.id
-            cell.configure(with: playlist, isActive: isActive)
+        switch viewModel.currentMode {
+        case .abLoop:
+            if let loop = viewModel.getABLoop(at: indexPath.row) {
+                let displayInfo = viewModel.displayString(for: loop)
+                let isActive = viewModel.isABLoopActive(at: indexPath.row)
+                cell.configure(title: displayInfo.title, detail: displayInfo.detail, isActive: isActive)
+            }
+        case .segmentPlaylist:
+            if let playlist = viewModel.getSegmentPlaylist(at: indexPath.row) {
+                let displayInfo = viewModel.displayString(for: playlist)
+                let isActive = viewModel.isSegmentPlaylistActive(at: indexPath.row)
+                cell.configure(title: displayInfo.title, detail: displayInfo.detail, isActive: isActive)
+            }
         }
 
         return cell
@@ -284,40 +278,40 @@ extension ABLoopViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
 
-        if selectedMode == .abLoop {
-            let loop = abLoops[indexPath.row]
-            delegate?.didSelectABLoop(loop)
-            delegate?.didRequestSeek(to: loop.pointA.toCMTime())
-        } else {
-            let playlist = segmentPlaylists[indexPath.row]
-            delegate?.didSelectSegmentPlaylist(playlist)
-            if let firstSegment = playlist.segments.first {
-                delegate?.didRequestSeek(to: firstSegment.startPoint.toCMTime())
+        switch viewModel.currentMode {
+        case .abLoop:
+            if let loop = viewModel.getABLoop(at: indexPath.row) {
+                delegate?.didSelectABLoop(loop)
+                delegate?.didRequestSeek(to: loop.pointA.toCMTime())
+            }
+        case .segmentPlaylist:
+            if let playlist = viewModel.getSegmentPlaylist(at: indexPath.row) {
+                delegate?.didSelectSegmentPlaylist(playlist)
+                if let firstSegment = playlist.segments.first {
+                    delegate?.didRequestSeek(to: firstSegment.startPoint.toCMTime())
+                }
             }
         }
 
-        updateStopButtonVisibility()
-        tableView.reloadData()
+        updateUI()
     }
 
     func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
-        if editingStyle == .delete {
-            if selectedMode == .abLoop {
-                let loop = abLoops[indexPath.row]
-                abLoopManager.removeABLoop(withId: loop.id, for: videoIdentifier)
-                abLoops.remove(at: indexPath.row)
-            } else {
-                let playlist = segmentPlaylists[indexPath.row]
-                abLoopManager.removeSegmentPlaylist(withId: playlist.id, for: videoIdentifier)
-                segmentPlaylists.remove(at: indexPath.row)
-            }
-            tableView.deleteRows(at: [indexPath], with: .fade)
-            updateStopButtonVisibility()
+        guard editingStyle == .delete else { return }
+
+        switch viewModel.currentMode {
+        case .abLoop:
+            viewModel.removeABLoop(at: indexPath.row)
+        case .segmentPlaylist:
+            viewModel.removeSegmentPlaylist(at: indexPath.row)
         }
+
+        tableView.deleteRows(at: [indexPath], with: .fade)
+        updateUI()
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 60
+        return ABLoopConstants.UI.cellHeight
     }
 }
 
@@ -333,7 +327,8 @@ extension ABLoopViewController: UIGestureRecognizerDelegate {
 
 extension ABLoopViewController: ABLoopCreationViewControllerDelegate {
     func didCreateABLoop(_ loop: ABLoop) {
-        loadData()
+        viewModel.loadData()
+        updateUI()
     }
 }
 
@@ -352,7 +347,7 @@ class ABLoopTableViewCell: UITableViewCell {
 
     private let activeIndicator = UIView().configure {
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor
-        $0.layer.cornerRadius = 4
+        $0.layer.cornerRadius = ABLoopConstants.UI.activeIndicatorSize / 2
         $0.isHidden = true
     }
 
@@ -376,7 +371,7 @@ class ABLoopTableViewCell: UITableViewCell {
         activeIndicator.snp.makeConstraints { make in
             make.leading.equalToSuperview().offset(CGFloat.space16)
             make.centerY.equalToSuperview()
-            make.width.height.equalTo(8)
+            make.width.height.equalTo(ABLoopConstants.UI.activeIndicatorSize)
         }
 
         titleLabel.snp.makeConstraints { make in
@@ -392,15 +387,9 @@ class ABLoopTableViewCell: UITableViewCell {
         }
     }
 
-    func configure(with loop: ABLoop, isActive: Bool) {
-        titleLabel.text = loop.name ?? "A-B Loop"
-        detailLabel.text = "\(loop.pointA.toString()) → \(loop.pointB.toString())"
-        activeIndicator.isHidden = !isActive
-    }
-
-    func configure(with playlist: SegmentPlaylist, isActive: Bool) {
-        titleLabel.text = playlist.name
-        detailLabel.text = "\(playlist.segments.count) segment(s)"
+    func configure(title: String, detail: String, isActive: Bool) {
+        titleLabel.text = title
+        detailLabel.text = detail
         activeIndicator.isHidden = !isActive
     }
 }

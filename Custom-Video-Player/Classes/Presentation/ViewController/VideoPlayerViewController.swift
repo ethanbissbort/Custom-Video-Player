@@ -348,10 +348,10 @@ extension VideoPlayerViewController {
 extension VideoPlayerViewController {
     /// Gets the frame rate of the currently playing video
     ///
-    /// - Returns: Frame rate as Double, defaults to 30.0 if unavailable
+    /// - Returns: Frame rate as Double, defaults to ABLoopConstants.defaultFrameRate if unavailable
     func getVideoFrameRate() -> Double {
         guard let track = playerItem?.asset.tracks(withMediaType: .video).first else {
-            return 30.0 // Default frame rate
+            return ABLoopConstants.defaultFrameRate
         }
         return Double(track.nominalFrameRate)
     }
