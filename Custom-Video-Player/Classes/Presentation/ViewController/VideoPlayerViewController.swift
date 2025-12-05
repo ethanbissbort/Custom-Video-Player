@@ -89,9 +89,29 @@ public class VideoPlayerViewController: UIViewController {
     
     deinit {
         playerItem?.removeObserver(self, forKeyPath: "status")
-        NotificationCenter.default.removeObserver(self,
-                                    name: UIApplication.didEnterBackgroundNotification,
-                                    object: nil)
+
+        // Remove runtime error handling notifications
+        NotificationCenter.default.removeObserver(
+            self,
+            name: .AVPlayerItemFailedToPlayToEndTime,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: .AVPlayerItemPlaybackStalled,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: .AVPlayerItemDidPlayToEndTime,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+
         guard let isLiveContent = viewModel.isLiveContent, !isLiveContent else { return }
         if let periodicTimeObserver = periodicTimeObserver {
             player?.removeTimeObserver(periodicTimeObserver)
@@ -209,6 +229,29 @@ extension VideoPlayerViewController {
 extension VideoPlayerViewController {
     private func addObservers() {
         playerItem?.addObserver(self, forKeyPath: "status", options: [.new, .initial], context: nil)
+
+        // Add runtime error handling notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerItemFailedToPlayToEndTime),
+            name: .AVPlayerItemFailedToPlayToEndTime,
+            object: playerItem
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerItemPlaybackStalled),
+            name: .AVPlayerItemPlaybackStalled,
+            object: playerItem
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerItemDidPlayToEndTime),
+            name: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem
+        )
+
         guard let isLiveContent = viewModel.isLiveContent, !isLiveContent else { return }
         player?.currentItem?.addObserver(self, forKeyPath: "duration", options: [.new, .initial], context: nil)
         let interval = CMTime(seconds: 1, preferredTimescale: CMTimeScale(NSEC_PER_SEC))

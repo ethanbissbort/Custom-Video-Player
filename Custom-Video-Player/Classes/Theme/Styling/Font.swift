@@ -26,4 +26,12 @@ class FontUtility {
     static func helveticaNeueMedium(ofSize size: CGFloat) -> UIFont {
         return UIFont(name: "HelveticaNeue-Medium", size: size) ?? UIFont.systemFont(ofSize: size, weight: .medium)
     }
+
+    /// Returns a font with the HelveticaNeue-Bold style at the specified size.
+    ///
+    /// - Parameter size: The size of the font.
+    /// - Returns: A UIFont object with the HelveticaNeue-Bold style.
+    static func helveticaNeueBold(ofSize size: CGFloat) -> UIFont {
+        return UIFont(name: "HelveticaNeue-Bold", size: size) ?? UIFont.systemFont(ofSize: size, weight: .bold)
+    }
 }

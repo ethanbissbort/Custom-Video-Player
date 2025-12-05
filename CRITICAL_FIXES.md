@@ -8,7 +8,7 @@ This document outlines the critical issues found during the code audit that must
 
 **Priority:** CRITICAL - Will cause crashes
 **Location:** `Custom-Video-Player/Classes/Theme/Styling/Font.swift`
-**Status:** ❌ Not Implemented
+**Status:** ✅ IMPLEMENTED
 
 ### Issue
 The `FontUtility` class is missing the `helveticaNeueBold(ofSize:)` method, which is referenced in 11 locations across the codebase. This will cause runtime crashes when any UI component tries to use bold fonts.
@@ -45,7 +45,7 @@ static func helveticaNeueBold(ofSize size: CGFloat) -> UIFont {
 
 **Priority:** HIGH
 **Location:** `Custom-Video-Player/Classes/Presentation/ViewController/VideoPlayerViewController+ErrorHandling.swift`
-**Status:** ❌ TODO Comment Present
+**Status:** ✅ IMPLEMENTED
 
 ### Issue
 The file contains a TODO comment indicating incomplete error handling:
@@ -106,7 +106,7 @@ NotificationCenter.default.removeObserver(
 
 **Priority:** MEDIUM
 **Location:** `Custom-Video-Player/Classes/Service/ABLoopManager.swift`
-**Status:** ⚠️ Potential Race Condition
+**Status:** ✅ IMPLEMENTED
 
 ### Issue
 The `shouldLoop(at:)` and `shouldAdvanceSegment(at:)` methods are called from a periodic observer, but there's no thread safety for accessing/modifying state.
@@ -161,11 +161,18 @@ public class ABLoopManager {
 
 After implementing fixes:
 
-- [ ] Added `helveticaNeueBold` method to FontUtility
+- [x] Added `helveticaNeueBold` method to FontUtility
 - [ ] Tested all UI components with bold fonts
-- [ ] Added runtime error handling for playback interruptions
+- [x] Added runtime error handling for playback interruptions
+  - [x] Added notification observer for AVPlayerItemFailedToPlayToEndTime
+  - [x] Added notification observer for AVPlayerItemPlaybackStalled
+  - [x] Added notification observer for AVPlayerItemDidPlayToEndTime
+  - [x] Properly removed observers in deinit
 - [ ] Tested error recovery with network interruptions
-- [ ] Added thread safety to ABLoopManager
+- [x] Added thread safety to ABLoopManager
+  - [x] Added serial dispatch queue for state management
+  - [x] Wrapped all state access methods with thread-safe operations
+  - [x] Ensured delegate calls happen on main queue
 - [ ] Tested A-B loop functionality under concurrent access
 - [ ] Updated unit tests (if any)
 - [ ] Performed integration testing
