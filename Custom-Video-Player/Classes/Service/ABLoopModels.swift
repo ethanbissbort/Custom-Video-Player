@@ -17,7 +17,7 @@ public struct TimePoint: Codable, Equatable {
     ///   - seconds: Seconds component
     ///   - frames: Frame number (0-based)
     ///   - frameRate: Frame rate of the video (e.g., 29.97, 30, 24, etc.)
-    public init(hours: Int = 0, minutes: Int = 0, seconds: Int = 0, frames: Int = 0, frameRate: Double = 30.0) {
+    public init(hours: Int = 0, minutes: Int = 0, seconds: Int = 0, frames: Int = 0, frameRate: Double = ABLoopConstants.defaultFrameRate) {
         self.hours = hours
         self.minutes = minutes
         self.seconds = seconds
@@ -30,7 +30,7 @@ public struct TimePoint: Codable, Equatable {
     /// - Parameters:
     ///   - cmTime: The CMTime to convert
     ///   - frameRate: Frame rate of the video
-    public init(from cmTime: CMTime, frameRate: Double = 30.0) {
+    public init(from cmTime: CMTime, frameRate: Double = ABLoopConstants.defaultFrameRate) {
         let totalSeconds = CMTimeGetSeconds(cmTime)
         let hours = Int(totalSeconds) / 3600
         let minutes = (Int(totalSeconds) % 3600) / 60
@@ -66,7 +66,7 @@ public struct TimePoint: Codable, Equatable {
     ///   - string: String in format "HH:MM:SS:FF"
     ///   - frameRate: Frame rate of the video
     /// - Returns: TimePoint if parsing succeeds, nil otherwise
-    public static func parse(_ string: String, frameRate: Double = 30.0) -> TimePoint? {
+    public static func parse(_ string: String, frameRate: Double = ABLoopConstants.defaultFrameRate) -> TimePoint? {
         let components = string.split(separator: ":").map { String($0) }
         guard components.count == 4,
               let hours = Int(components[0]),

@@ -10,7 +10,7 @@ protocol TimecodeInputViewDelegate: AnyObject {
 class TimecodeInputView: UIView {
     weak var delegate: TimecodeInputViewDelegate?
 
-    private var frameRate: Double = 30.0
+    private var frameRate: Double = ABLoopConstants.defaultFrameRate
 
     // MARK: - UI Components
 
