@@ -22,6 +22,9 @@ public class ABLoopManager {
     private let userDefaults = UserDefaults.standard
     private let storageKey = "com.customvideoplayer.abloops"
 
+    /// Serial queue for thread-safe state management
+    private let stateQueue = DispatchQueue(label: "com.customvideoplayer.abloop.state")
+
     // MARK: - Initialization
 
     public init() {
@@ -30,36 +33,44 @@ public class ABLoopManager {
 
     // MARK: - A-B Loop Management
 
-    /// Sets the currently active A-B loop
+    /// Sets the currently active A-B loop (thread-safe)
     ///
     /// - Parameter loop: The loop to activate, or nil to deactivate
     public func setActiveLoop(_ loop: ABLoop?) {
-        currentActiveLoop = loop
-        currentSegmentPlaylist = nil
-        currentSegment = nil
+        stateQueue.async { [weak self] in
+            self?.currentActiveLoop = loop
+            self?.currentSegmentPlaylist = nil
+            self?.currentSegment = nil
+        }
     }
 
-    /// Returns the currently active A-B loop
+    /// Returns the currently active A-B loop (thread-safe)
     ///
     /// - Returns: The active loop, or nil if none is active
     public func getActiveLoop() -> ABLoop? {
-        return currentActiveLoop
+        return stateQueue.sync {
+            return currentActiveLoop
+        }
     }
 
-    /// Checks if playback should loop based on current time
+    /// Checks if playback should loop based on current time (thread-safe)
     ///
     /// - Parameter currentTime: Current playback time
     /// - Returns: CMTime to seek to, or nil if no loop should occur
     public func shouldLoop(at currentTime: CMTime) -> CMTime? {
-        if let activeLoop = currentActiveLoop {
-            let endTime = activeLoop.pointB.toCMTime()
-            // Check if we've reached or passed the end point
-            if currentTime >= endTime {
-                delegate?.abLoopDidReachEnd(activeLoop)
-                return activeLoop.pointA.toCMTime()
+        return stateQueue.sync {
+            if let activeLoop = currentActiveLoop {
+                let endTime = activeLoop.pointB.toCMTime()
+                // Check if we've reached or passed the end point
+                if currentTime >= endTime {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.delegate?.abLoopDidReachEnd(activeLoop)
+                    }
+                    return activeLoop.pointA.toCMTime()
+                }
             }
+            return nil
         }
-        return nil
     }
 
     /// Adds a new A-B loop for a video
@@ -98,64 +109,76 @@ public class ABLoopManager {
 
     // MARK: - Segment Playlist Management
 
-    /// Sets the currently active segment playlist
+    /// Sets the currently active segment playlist (thread-safe)
     ///
     /// - Parameter playlist: The playlist to activate, or nil to deactivate
     public func setActiveSegmentPlaylist(_ playlist: SegmentPlaylist?) {
-        currentSegmentPlaylist = playlist
-        currentActiveLoop = nil
-        if let playlist = playlist {
-            currentSegment = playlist.segments.first
-        } else {
-            currentSegment = nil
+        stateQueue.async { [weak self] in
+            self?.currentSegmentPlaylist = playlist
+            self?.currentActiveLoop = nil
+            if let playlist = playlist {
+                self?.currentSegment = playlist.segments.first
+            } else {
+                self?.currentSegment = nil
+            }
         }
     }
 
-    /// Returns the currently active segment playlist
+    /// Returns the currently active segment playlist (thread-safe)
     ///
     /// - Returns: The active playlist, or nil if none is active
     public func getActiveSegmentPlaylist() -> SegmentPlaylist? {
-        return currentSegmentPlaylist
+        return stateQueue.sync {
+            return currentSegmentPlaylist
+        }
     }
 
-    /// Returns the current segment being played
+    /// Returns the current segment being played (thread-safe)
     ///
     /// - Returns: The current segment, or nil if none is active
     public func getCurrentSegment() -> PlaybackSegment? {
-        return currentSegment
+        return stateQueue.sync {
+            return currentSegment
+        }
     }
 
-    /// Checks if playback should advance to next segment
+    /// Checks if playback should advance to next segment (thread-safe)
     ///
     /// - Parameter currentTime: Current playback time
     /// - Returns: CMTime to seek to for next segment, or nil if no transition needed
     public func shouldAdvanceSegment(at currentTime: CMTime) -> CMTime? {
-        guard let playlist = currentSegmentPlaylist,
-              let segment = currentSegment else {
-            return nil
-        }
+        return stateQueue.sync {
+            guard let playlist = currentSegmentPlaylist,
+                  let segment = currentSegment else {
+                return nil
+            }
 
-        let endTime = segment.endPoint.toCMTime()
-        // Check if we've reached or passed the end point of current segment
-        if currentTime >= endTime {
-            delegate?.segmentPlaylistDidFinishSegment(segment)
+            let endTime = segment.endPoint.toCMTime()
+            // Check if we've reached or passed the end point of current segment
+            if currentTime >= endTime {
+                DispatchQueue.main.async { [weak self] in
+                    self?.delegate?.segmentPlaylistDidFinishSegment(segment)
+                }
 
-            if let nextSegment = playlist.nextSegment(after: segment) {
-                currentSegment = nextSegment
-                return nextSegment.startPoint.toCMTime()
-            } else {
-                // Playlist finished
-                delegate?.segmentPlaylistDidComplete(playlist)
-                if playlist.isLooping {
-                    currentSegment = playlist.segments.first
-                    return playlist.segments.first?.startPoint.toCMTime()
+                if let nextSegment = playlist.nextSegment(after: segment) {
+                    currentSegment = nextSegment
+                    return nextSegment.startPoint.toCMTime()
                 } else {
-                    currentSegmentPlaylist = nil
-                    currentSegment = nil
+                    // Playlist finished
+                    DispatchQueue.main.async { [weak self] in
+                        self?.delegate?.segmentPlaylistDidComplete(playlist)
+                    }
+                    if playlist.isLooping {
+                        currentSegment = playlist.segments.first
+                        return playlist.segments.first?.startPoint.toCMTime()
+                    } else {
+                        currentSegmentPlaylist = nil
+                        currentSegment = nil
+                    }
                 }
             }
+            return nil
         }
-        return nil
     }
 
     /// Adds a new segment playlist for a video
