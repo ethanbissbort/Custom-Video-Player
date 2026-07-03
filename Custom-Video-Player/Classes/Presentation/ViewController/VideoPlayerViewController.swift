@@ -456,15 +456,15 @@ extension VideoPlayerViewController: ABLoopViewControllerDelegate {
 // MARK: - ABLoopManagerDelegate
 
 extension VideoPlayerViewController: ABLoopManagerDelegate {
-    func abLoopDidReachEnd(_ loop: ABLoop) {
+    public func abLoopDidReachEnd(_ loop: ABLoop) {
         // Optional: Add visual feedback or logging when loop repeats
     }
 
-    func segmentPlaylistDidFinishSegment(_ segment: PlaybackSegment) {
+    public func segmentPlaylistDidFinishSegment(_ segment: PlaybackSegment) {
         // Optional: Add visual feedback or logging when segment finishes
     }
 
-    func segmentPlaylistDidComplete(_ playlist: SegmentPlaylist) {
+    public func segmentPlaylistDidComplete(_ playlist: SegmentPlaylist) {
         // Optional: Add visual feedback or logging when playlist completes
     }
 }
