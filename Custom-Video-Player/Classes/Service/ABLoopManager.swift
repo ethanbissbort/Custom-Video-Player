@@ -20,7 +20,7 @@ public class ABLoopManager {
     private var currentSegment: PlaybackSegment?
 
     private let userDefaults = UserDefaults.standard
-    private let storageKey = "com.customvideoplayer.abloops"
+    private let storageKey = ABLoopConstants.storageKey
 
     /// Serial queue for thread-safe state management
     private let stateQueue = DispatchQueue(label: "com.customvideoplayer.abloop.state")
@@ -93,8 +93,10 @@ public class ABLoopManager {
     ///   - videoIdentifier: Identifier for the video
     public func removeABLoop(withId loopId: UUID, for videoIdentifier: String) {
         videoLoopData[videoIdentifier]?.abLoops.removeAll { $0.id == loopId }
-        if currentActiveLoop?.id == loopId {
-            currentActiveLoop = nil
+        stateQueue.sync {
+            if currentActiveLoop?.id == loopId {
+                currentActiveLoop = nil
+            }
         }
         saveLoopData()
     }
@@ -201,9 +203,11 @@ public class ABLoopManager {
     ///   - videoIdentifier: Identifier for the video
     public func removeSegmentPlaylist(withId playlistId: UUID, for videoIdentifier: String) {
         videoLoopData[videoIdentifier]?.segmentPlaylists.removeAll { $0.id == playlistId }
-        if currentSegmentPlaylist?.id == playlistId {
-            currentSegmentPlaylist = nil
-            currentSegment = nil
+        stateQueue.sync {
+            if currentSegmentPlaylist?.id == playlistId {
+                currentSegmentPlaylist = nil
+                currentSegment = nil
+            }
         }
         saveLoopData()
     }
@@ -224,8 +228,10 @@ public class ABLoopManager {
     public func updateSegmentPlaylist(_ playlist: SegmentPlaylist, for videoIdentifier: String) {
         if let index = videoLoopData[videoIdentifier]?.segmentPlaylists.firstIndex(where: { $0.id == playlist.id }) {
             videoLoopData[videoIdentifier]?.segmentPlaylists[index] = playlist
-            if currentSegmentPlaylist?.id == playlist.id {
-                currentSegmentPlaylist = playlist
+            stateQueue.sync {
+                if currentSegmentPlaylist?.id == playlist.id {
+                    currentSegmentPlaylist = playlist
+                }
             }
             saveLoopData()
         }
@@ -264,10 +270,12 @@ public class ABLoopManager {
     /// - Parameter videoIdentifier: Identifier for the video
     public func clearLoopData(for videoIdentifier: String) {
         videoLoopData.removeValue(forKey: videoIdentifier)
-        if currentActiveLoop != nil || currentSegmentPlaylist?.videoIdentifier == videoIdentifier {
-            currentActiveLoop = nil
-            currentSegmentPlaylist = nil
-            currentSegment = nil
+        stateQueue.sync {
+            if currentActiveLoop != nil || currentSegmentPlaylist?.videoIdentifier == videoIdentifier {
+                currentActiveLoop = nil
+                currentSegmentPlaylist = nil
+                currentSegment = nil
+            }
         }
         saveLoopData()
     }
@@ -275,9 +283,11 @@ public class ABLoopManager {
     /// Clears all loop data
     public func clearAllLoopData() {
         videoLoopData.removeAll()
-        currentActiveLoop = nil
-        currentSegmentPlaylist = nil
-        currentSegment = nil
+        stateQueue.sync {
+            currentActiveLoop = nil
+            currentSegmentPlaylist = nil
+            currentSegment = nil
+        }
         userDefaults.removeObject(forKey: storageKey)
     }
 }

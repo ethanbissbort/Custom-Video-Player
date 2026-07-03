@@ -11,14 +11,14 @@ extension [VideoQuality] {
     
     /// Sorts the video qualities by bitrate in descending order and inserts an "Auto" option at the beginning.
     mutating func sortAndInsertAutoVideoQualityOption() {
-        sort(by: { $0.bitrate >= $1.bitrate })
+        sort(by: { $0.bitrate > $1.bitrate })
         let autoQualityOption = VideoQuality(bitrate: Double.greatestFiniteMagnitude, resolution: "Auto")
         insert(autoQualityOption, at: 0)
     }
 }
 
 /// A helper class for handling M3U8 manifest data to fetch supported video qualities.
-class M3u8Helper {
+final class M3u8Helper {
     
     /// Constants used for parsing the M3U8 manifest.
     private enum Constants {
@@ -54,7 +54,9 @@ class M3u8Helper {
     /// - Returns: An array of `VideoQuality` objects.
     private func parse(stringData: String) -> [VideoQuality] {
         var result: [VideoQuality] = []
-        let rows = stringData.components(separatedBy: "\n")
+        // Split on any newline so CRLF (\r\n) manifests don't leave a trailing
+        // "\r" on the last attribute of each line, which would break parsing.
+        let rows = stringData.components(separatedBy: .newlines)
 
         for row in rows {
             if let quality = quality(from: row) {

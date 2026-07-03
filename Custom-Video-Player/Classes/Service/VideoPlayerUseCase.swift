@@ -13,7 +13,7 @@ public protocol VideoPlayerUseCase {
 
 /// A service class that implements the `VideoPlayerUseCase` protocol to handle video player functionality.
 public final class VideoPlayerService: VideoPlayerUseCase {
-    let apiClient: APIClientService
+    private let apiClient: APIClientService
     
     /// Initializes the `VideoPlayerService` with a default `APIClientService` instance.
     public init() {
@@ -26,6 +26,6 @@ public final class VideoPlayerService: VideoPlayerUseCase {
     ///   - videoURL: The URL of the video.
     ///   - completion: A closure to be called when the request finishes, containing a `Result` enum with either the M3U8 configuration data or an error.
     public func getM3U8Config(videoURL: URL, completion: @escaping (Result<Data, Error>) -> Void) {
-        return apiClient.requestData(from: videoURL, completion: completion)
+        apiClient.requestData(from: videoURL, completion: completion)
     }
 }

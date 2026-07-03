@@ -74,26 +74,30 @@ extension VideoPlayerViewController: PlayerControlsViewDelegate {
     }
     
     func sliderValueChanged(slider: UISlider, event: UIEvent) {
-        var pauseTime: CMTime = CMTime.zero
         guard let isLiveContent = viewModel.isLiveContent, !isLiveContent, let player = player else { return }
-        if let touchEvent = event.allTouches?.first {
-            switch touchEvent.phase {
-            case .began:
-                player.pause()
-                guard let currentTime = player.currentItem?.currentTime() else { return }
-                pauseTime = currentTime
-                invalidateControlsHiddenTimer()
-            case .moved:
-                break
-            case .ended:
-                resetControlsHiddenTimer()
-                let seekingCM = CMTimeMake(value: Int64(slider.value * Float(pauseTime.timescale)), timescale: pauseTime.timescale)
-                player.seek(to: seekingCM)
-                /// Retain video player state on seeking: whenever the user interacts with the seek bar, we pause the player internally to calculate the new time. So, once the seek bar action is completed, we would need to retain the original playback state of the player.
-                viewModel.playerState == .play ? player.play() : player.pause()
-            default:
-                break
+        guard let touchEvent = event.allTouches?.first else { return }
+        switch touchEvent.phase {
+        case .began:
+            player.pause()
+            invalidateControlsHiddenTimer()
+        case .moved:
+            break
+        case .ended:
+            resetControlsHiddenTimer()
+            // `slider.value` is expressed in seconds (its maximum is set to the item duration in
+            // seconds). Clamp to the valid range before seeking to guard against out-of-bounds values.
+            var targetSeconds = Double(slider.value)
+            if let durationSeconds = player.currentItem?.duration.seconds, durationSeconds > 0 {
+                targetSeconds = min(max(targetSeconds, 0), durationSeconds)
+            } else {
+                targetSeconds = max(targetSeconds, 0)
             }
+            let seekingCM = CMTime(seconds: targetSeconds, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+            player.seek(to: seekingCM)
+            /// Retain video player state on seeking: whenever the user interacts with the seek bar, we pause the player internally to calculate the new time. So, once the seek bar action is completed, we would need to retain the original playback state of the player.
+            viewModel.playerState == .play ? player.play() : player.pause()
+        default:
+            break
         }
     }
     

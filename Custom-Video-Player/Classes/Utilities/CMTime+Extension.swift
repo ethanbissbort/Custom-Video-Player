@@ -9,6 +9,11 @@ extension CMTime {
     /// - Returns: A string representing the formatted duration.
     var durationText: String {
         let totalSeconds = CMTimeGetSeconds(self)
+        // Guard against non-finite values (e.g. indefinite/invalid CMTime during
+        // buffering or live streams), which would trap when converted to Int.
+        guard totalSeconds.isFinite, totalSeconds >= 0 else {
+            return "00:00"
+        }
         let hours = Int(totalSeconds.truncatingRemainder(dividingBy: 86400) / 3600)
         let minutes = Int(totalSeconds.truncatingRemainder(dividingBy: 3600) / 60)
         let seconds = Int(totalSeconds.truncatingRemainder(dividingBy: 60))

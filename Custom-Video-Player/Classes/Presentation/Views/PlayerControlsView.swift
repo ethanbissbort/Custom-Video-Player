@@ -199,8 +199,8 @@ class PlayerControlsView: UIView {
         }
     }
     
-        private let dynamicSpacing: CGFloat = UIScreen.main.bounds.height * 0.055
-    
+    private let dynamicSpacing: CGFloat = UIScreen.main.bounds.height * 0.055
+
     init() {
         super.init(frame: .zero)
         setupViews()
@@ -355,6 +355,7 @@ extension PlayerControlsView {
         // Adding targets for control events
         playPauseButton.addTarget(self, action: #selector(pausePlay), for: .touchUpInside)
         forwardButton.addTarget(self, action: #selector(doForwardJump), for: .touchUpInside)
+        rewindButton.addTarget(self, action: #selector(doBackwardJump), for: .touchUpInside)
         previousVideoButton.addTarget(self, action: #selector(playPreviousVideo), for: .touchUpInside)
         nextVideoButton.addTarget(self, action: #selector(playNextVideo), for: .touchUpInside)
         seekBar.addTarget(self, action: #selector(onSliderValChanged(slider:event:)), for: .valueChanged)

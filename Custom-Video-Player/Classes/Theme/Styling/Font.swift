@@ -1,7 +1,7 @@
 import UIKit
 
 /// A utility class for managing custom font styles.
-class FontUtility {
+final class FontUtility {
     
     /// Returns a font with the HelveticaNeue-Light style at the specified size.
     ///

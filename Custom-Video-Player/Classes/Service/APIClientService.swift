@@ -1,7 +1,7 @@
 import Foundation
 
 /// A service class for making network requests.
-class APIClientService {
+final class APIClientService {
     
     /// Makes a data request from the specified URL.
     ///

@@ -14,65 +14,41 @@ class TimecodeInputView: UIView {
 
     // MARK: - UI Components
 
-    private let hoursTextField = UITextField().configure {
-        $0.keyboardType = .numberPad
-        $0.textAlignment = .center
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
-        $0.textColor = VideoPlayerColor(palette: .white).uiColor
-        $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.3)
-        $0.layer.cornerRadius = 4
-        $0.placeholder = "00"
+    private let hoursTextField = TimecodeInputView.makeTimeTextField()
+
+    private let minutesTextField = TimecodeInputView.makeTimeTextField()
+
+    private let secondsTextField = TimecodeInputView.makeTimeTextField()
+
+    private let framesTextField = TimecodeInputView.makeTimeTextField()
+
+    private let separator1 = TimecodeInputView.makeSeparatorLabel()
+
+    private let separator2 = TimecodeInputView.makeSeparatorLabel()
+
+    private let separator3 = TimecodeInputView.makeSeparatorLabel()
+
+    /// Creates a numeric text field styled for a timecode component.
+    private static func makeTimeTextField() -> UITextField {
+        UITextField().configure {
+            $0.keyboardType = .numberPad
+            $0.textAlignment = .center
+            $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+            $0.textColor = VideoPlayerColor(palette: .white).uiColor
+            $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.3)
+            $0.layer.cornerRadius = 4
+            $0.placeholder = "00"
+        }
     }
 
-    private let minutesTextField = UITextField().configure {
-        $0.keyboardType = .numberPad
-        $0.textAlignment = .center
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
-        $0.textColor = VideoPlayerColor(palette: .white).uiColor
-        $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.3)
-        $0.layer.cornerRadius = 4
-        $0.placeholder = "00"
-    }
-
-    private let secondsTextField = UITextField().configure {
-        $0.keyboardType = .numberPad
-        $0.textAlignment = .center
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
-        $0.textColor = VideoPlayerColor(palette: .white).uiColor
-        $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.3)
-        $0.layer.cornerRadius = 4
-        $0.placeholder = "00"
-    }
-
-    private let framesTextField = UITextField().configure {
-        $0.keyboardType = .numberPad
-        $0.textAlignment = .center
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
-        $0.textColor = VideoPlayerColor(palette: .white).uiColor
-        $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.3)
-        $0.layer.cornerRadius = 4
-        $0.placeholder = "00"
-    }
-
-    private let separator1 = UILabel().configure {
-        $0.text = ":"
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
-        $0.textColor = VideoPlayerColor(palette: .white).uiColor
-        $0.textAlignment = .center
-    }
-
-    private let separator2 = UILabel().configure {
-        $0.text = ":"
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
-        $0.textColor = VideoPlayerColor(palette: .white).uiColor
-        $0.textAlignment = .center
-    }
-
-    private let separator3 = UILabel().configure {
-        $0.text = ":"
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
-        $0.textColor = VideoPlayerColor(palette: .white).uiColor
-        $0.textAlignment = .center
+    /// Creates a ":" separator label used between timecode components.
+    private static func makeSeparatorLabel() -> UILabel {
+        UILabel().configure {
+            $0.text = ":"
+            $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
+            $0.textColor = VideoPlayerColor(palette: .white).uiColor
+            $0.textAlignment = .center
+        }
     }
 
     private let formatLabel = UILabel().configure {
