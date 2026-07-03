@@ -28,6 +28,13 @@ jobs:
           swift --version
           xcodebuild -version
 
+      # The repo root contains a dangling `_Pods.xcodeproj` symlink (points at the
+      # CocoaPods-generated project, which only exists after `pod install`). Left
+      # in place, xcodebuild's project auto-discovery trips over it instead of
+      # building the Swift package. Remove it from the checkout before building.
+      - name: Remove dangling Pods symlink
+        run: rm -f _Pods.xcodeproj
+
       - name: Resolve dependencies
         run: xcodebuild -resolvePackageDependencies -scheme CustomVideoPlayer
 
