@@ -44,3 +44,36 @@ jobs:
             -scheme CustomVideoPlayer \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
+
+  example:
+    name: Build Example (CocoaPods)
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: Example
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          pod --version
+
+      - name: CocoaPods install
+        run: pod install
+
+      # Builds the example app, the locally-pathed CustomVideoPlayer pod, and the
+      # test bundle (the shared scheme wires the tests as a testable), so the whole
+      # CocoaPods consumer path is compiled. `build-for-testing` compiles the test
+      # target without needing a booted simulator.
+      - name: Build example workspace for iOS Simulator
+        run: |
+          xcodebuild build-for-testing \
+            -workspace Custom-Video-Player.xcworkspace \
+            -scheme Custom-Video-Player-Example \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
