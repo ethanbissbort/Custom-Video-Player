@@ -1,6 +1,6 @@
 use_frameworks!
 
-platform :ios, '11.0'
+platform :ios, '18.0'
 
 target 'Custom-Video-Player_Example' do
   pod 'CustomVideoPlayer', :path => '../'

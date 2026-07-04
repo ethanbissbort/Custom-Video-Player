@@ -20,12 +20,7 @@ extension UIColor {
             name = "\(namespace)/\(name)"
         }
         let resourceBundle = CustomVideoPlayer.resourceBundle
-        let resolvedColor: UIColor?
-        if #available(iOS 13, *) {
-            resolvedColor = UIColor(named: name, in: resourceBundle, compatibleWith: .current)
-        } else {
-            resolvedColor = UIColor(named: name, in: resourceBundle, compatibleWith: nil)
-        }
+        let resolvedColor = UIColor(named: name, in: resourceBundle, compatibleWith: .current)
         // Fall back to a clear color rather than crashing if the asset is missing.
         self.init(cgColor: (resolvedColor ?? .clear).cgColor)
     }
@@ -42,12 +37,7 @@ extension UIImage {
         if let namespace = image.namespace {
             name = "\(namespace)/\(name)"
         }
-        let resolvedImage: UIImage?
-        if #available(iOS 13, *) {
-            resolvedImage = UIImage(named: name, in: resourceBundle, compatibleWith: .current)
-        } else {
-            resolvedImage = UIImage(named: name, in: resourceBundle, compatibleWith: nil)
-        }
+        let resolvedImage = UIImage(named: name, in: resourceBundle, compatibleWith: .current)
         // Fall back to an empty image rather than crashing if the asset is missing.
         if let resolvedImage = resolvedImage, let cgImage = resolvedImage.cgImage {
             self.init(cgImage: cgImage, scale: resolvedImage.scale, orientation: resolvedImage.imageOrientation)

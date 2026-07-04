@@ -7,7 +7,7 @@ Custom Video Player is an iOS library that provides a feature-rich video player 
 ## Technology Stack
 
 - **Language**: Swift
-- **Minimum iOS Version**: iOS 11.0
+- **Minimum iOS Version**: iOS 18.0
 - **Dependencies**:
   - SnapKit (5.0.0+) - Auto Layout DSL
 - **Distribution**: CocoaPods, Swift Package Manager
@@ -193,7 +193,7 @@ Latest tag: 1.1.0
 
 ### Swift Package Manager
 Package manifest: `Package.swift`
-Supports iOS 11.0+
+Supports iOS 18.0+
 
 ## Notes for AI Assistance
 

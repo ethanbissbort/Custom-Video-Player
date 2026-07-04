@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.author           = { 'Ajay Kumar' => 'ajayyasodha@gmail.com' }
   s.source           = { :git => 'https://github.com/ajkmr7/Custom-Video-Player.git', :tag => s.version.to_s }
 
-  s.ios.deployment_target = '11.0'
+  s.ios.deployment_target = '18.0'
 
   s.source_files = 'Custom-Video-Player/Classes/**/*'
   s.dependency 'SnapKit'

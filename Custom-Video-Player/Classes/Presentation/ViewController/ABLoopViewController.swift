@@ -45,11 +45,7 @@ class ABLoopViewController: UIViewController {
         ])
         control.selectedSegmentIndex = 0
         control.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.5)
-        // `selectedSegmentTintColor` is only available on iOS 13+, but the library
-        // deploys to iOS 11. Guard it so it compiles and degrades gracefully.
-        if #available(iOS 13.0, *) {
-            control.selectedSegmentTintColor = VideoPlayerColor(palette: .red).uiColor
-        }
+        control.selectedSegmentTintColor = VideoPlayerColor(palette: .red).uiColor
         control.setTitleTextAttributes([.foregroundColor: VideoPlayerColor(palette: .white).uiColor], for: .normal)
         control.setTitleTextAttributes([.foregroundColor: VideoPlayerColor(palette: .white).uiColor], for: .selected)
         return control

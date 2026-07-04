@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     name: Build (iOS, SwiftPM)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
 
   example:
     name: Build Example (CocoaPods)
-    runs-on: macos-14
+    runs-on: macos-15
     defaults:
       run:
         working-directory: Example
