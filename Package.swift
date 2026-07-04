@@ -22,7 +22,10 @@ let package = Package(
                 "SnapKit"
             ],
             path: "Custom-Video-Player",
-            resources: [.copy("Assets/*")]
+            resources: [
+                .process("Assets/Color.xcassets"),
+                .process("Assets/Images.xcassets")
+            ]
         )
     ],
     swiftLanguageModes: [.v5]
