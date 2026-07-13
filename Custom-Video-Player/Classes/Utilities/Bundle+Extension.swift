@@ -8,7 +8,7 @@ final class CustomVideoPlayer {
         #if SWIFT_PACKAGE
         // When using Swift Package Manager, use the module bundle.
         return Bundle.module
-        #endif
+        #else
         // When using Cocoapods, locate the resource bundle manually.
         let myBundle = Bundle(for: CustomVideoPlayer.self)
 
@@ -23,5 +23,6 @@ final class CustomVideoPlayer {
         }
 
         return resourceBundle
+        #endif
     }()
 }

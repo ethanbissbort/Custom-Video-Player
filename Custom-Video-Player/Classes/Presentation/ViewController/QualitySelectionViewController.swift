@@ -53,9 +53,10 @@ class QualitySelectionViewController: UIViewController {
         modalPresentationStyle = .popover
     }
     
-    @objc func shouldForceLandscape() {
-        //  View controller that response this protocol can rotate ...
-    }
+    /// Intentionally empty. The host app detects landscape-capable controllers via
+    /// `responds(to: Selector("shouldForceLandscape"))` (see the Example AppDelegate), so this
+    /// method's mere presence is what matters — do not remove it.
+    @objc func shouldForceLandscape() {}
     
     @available(*, unavailable)
     required init?(coder _: NSCoder) {

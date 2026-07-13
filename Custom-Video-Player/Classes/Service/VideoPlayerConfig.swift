@@ -21,7 +21,7 @@ public struct VideoPlaylist {
     /// - Parameters:
     ///   - title: The title of the playlist.
     ///   - currentVideoIndex: The index of the currently playing video in the playlist (default is nil).
-    ///   - videos: An array of `Video` objects in the playlist (default is nil).
+    ///   - videos: An array of `Video` objects in the playlist.
     public init(title: String, currentVideoIndex: Int? = nil, videos: [Video]?) {
         self.title = title
         self.currentVideoIndex = currentVideoIndex

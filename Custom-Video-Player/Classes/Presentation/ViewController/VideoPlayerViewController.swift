@@ -25,7 +25,9 @@ public class VideoPlayerViewController: UIViewController {
         kCMTextMarkupAttribute_FontFamilyName as String: UIFont.preferredFont(forTextStyle: .body).fontName,
     ])
     
-    private let activityIndicatorView = UIActivityIndicatorView().configure {
+    // `internal` (not `private`): accessed from VideoPlayerViewController+ErrorHandling.swift,
+    // which is a separate file, so `private` would not compile.
+    let activityIndicatorView = UIActivityIndicatorView().configure {
         $0.tintColor = .gray
         $0.color = .gray
         $0.hidesWhenStopped = true
@@ -66,9 +68,10 @@ public class VideoPlayerViewController: UIViewController {
         setupPlayer()
     }
     
-    @objc func shouldForceLandscape() {
-        //  View controller that response this protocol can rotate ...
-    }
+    /// Intentionally empty. The host app detects landscape-capable controllers via
+    /// `responds(to: Selector("shouldForceLandscape"))` (see the Example AppDelegate), so this
+    /// method's mere presence is what matters — do not remove it.
+    @objc func shouldForceLandscape() {}
     
     @objc func appMovedToBackground() {
         pausePlayer()
@@ -275,6 +278,27 @@ extension VideoPlayerViewController {
         }
     }
     
+    /// Removes the observers registered in `addObservers()` for the current `playerItem`/`player`.
+    /// Must be called before discarding the current item (e.g. when switching videos) so that
+    /// `AVPlayerItem`s are not deallocated while KVO observers are still registered.
+    /// Mirrors `addObservers()`: the per-notification `object:` and the live-content guard match
+    /// exactly what was registered. The app-lifecycle observer is intentionally NOT removed here
+    /// (it is owned for the controller's lifetime and torn down in `deinit`).
+    private func removeObservers() {
+        playerItem?.removeObserver(self, forKeyPath: "status")
+
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemFailedToPlayToEndTime, object: playerItem)
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemPlaybackStalled, object: playerItem)
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: playerItem)
+
+        guard let isLiveContent = viewModel.isLiveContent, !isLiveContent else { return }
+        if let periodicTimeObserver = periodicTimeObserver {
+            player?.removeTimeObserver(periodicTimeObserver)
+        }
+        periodicTimeObserver = nil
+        player?.currentItem?.removeObserver(self, forKeyPath: "duration")
+    }
+
     public override func observeValue(forKeyPath keyPath: String?, of _: Any?, change _: [NSKeyValueChangeKey: Any]?, context _: UnsafeMutableRawPointer?) {
         switch keyPath {
         case "duration":
@@ -375,6 +399,9 @@ extension VideoPlayerViewController {
         hideControls()
         didSetupControls = false
         disableGestureRecognizers()
+        // Remove observers from the outgoing item/player before discarding it, otherwise the
+        // AVPlayerItem is deallocated with KVO observers still registered.
+        removeObservers()
         player?.replaceCurrentItem(with: nil)
         playerItem = nil
         playerLayer = nil
@@ -429,15 +456,15 @@ extension VideoPlayerViewController: ABLoopViewControllerDelegate {
 // MARK: - ABLoopManagerDelegate
 
 extension VideoPlayerViewController: ABLoopManagerDelegate {
-    func abLoopDidReachEnd(_ loop: ABLoop) {
+    public func abLoopDidReachEnd(_ loop: ABLoop) {
         // Optional: Add visual feedback or logging when loop repeats
     }
 
-    func segmentPlaylistDidFinishSegment(_ segment: PlaybackSegment) {
+    public func segmentPlaylistDidFinishSegment(_ segment: PlaybackSegment) {
         // Optional: Add visual feedback or logging when segment finishes
     }
 
-    func segmentPlaylistDidComplete(_ playlist: SegmentPlaylist) {
+    public func segmentPlaylistDidComplete(_ playlist: SegmentPlaylist) {
         // Optional: Add visual feedback or logging when playlist completes
     }
 }

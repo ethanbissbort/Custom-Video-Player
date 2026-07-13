@@ -3,7 +3,7 @@ import Foundation
 class QualitySelectionViewModel {
     // MARK: - Properties
     
-    var supportedResolutions: [String]
+    let supportedResolutions: [String]
 
     var selectedItemIndex: Int = 0
 

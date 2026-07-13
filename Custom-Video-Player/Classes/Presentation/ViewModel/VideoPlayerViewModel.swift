@@ -23,16 +23,23 @@ public class VideoPlayerViewModel {
     var playbackQualityStrings: [String]?
     weak var delegate: VideoPlayerDelegate?
     
+    /// The currently selected video, if the playlist and index are valid.
+    private var currentVideo: Video? {
+        guard let videos = config.playlist.videos, !videos.isEmpty else { return nil }
+        let index = config.playlist.currentVideoIndex ?? 0
+        guard index >= 0, index < videos.count else { return nil }
+        return videos[index]
+    }
+
     /// URL of the current video.
     var url: URL? {
-        guard let videos = config.playlist.videos, videos.count > 0, let url = videos[config.playlist.currentVideoIndex ?? 0].url else { return nil }
+        guard let url = currentVideo?.url else { return nil }
         return URL(string: url)
     }
-    
+
     /// Indicates if the current content is live.
     var isLiveContent: Bool? {
-        guard let videos = config.playlist.videos, videos.count > 0, let isLiveContent = videos[config.playlist.currentVideoIndex ?? 0].isLiveContent else { return nil }
-        return isLiveContent
+        return currentVideo?.isLiveContent
     }
     
     /// Indicates if the previous button is enabled.
@@ -60,8 +67,7 @@ public class VideoPlayerViewModel {
     
     /// Subtitle label text for the current video.
     var subtitleLabelText: String? {
-        guard let videos = config.playlist.videos, videos.count > 0, let title = videos[config.playlist.currentVideoIndex ?? 0].title else { return nil }
-        return title
+        return currentVideo?.title
     }
     
     /// Initializes the video player view model.
@@ -148,6 +154,7 @@ public class VideoPlayerViewModel {
     /// - Parameter index: Index of the selected quality.
     /// - Returns: Bitrate of the selected quality.
     func fetchPlaybackBitrate(for index: Int) -> Double? {
-        return playbackQualities?[index].bitrate
+        guard let playbackQualities = playbackQualities, index >= 0, index < playbackQualities.count else { return nil }
+        return playbackQualities[index].bitrate
     }
 }

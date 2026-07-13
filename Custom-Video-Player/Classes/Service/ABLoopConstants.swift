@@ -2,11 +2,14 @@ import Foundation
 import CoreGraphics
 
 /// Constants for A-B Loop functionality
-enum ABLoopConstants {
+public enum ABLoopConstants {
     // MARK: - Default Values
 
-    /// Default frame rate when video frame rate cannot be determined
-    static let defaultFrameRate: Double = 30.0
+    /// Default frame rate when video frame rate cannot be determined.
+    /// `public` because it is used as the default argument value for public
+    /// `TimePoint` initializers, and Swift requires such defaults to be at least
+    /// as accessible as the API that exposes them.
+    public static let defaultFrameRate: Double = 30.0
 
     /// Maximum frames per second (used for validation)
     static let maxFrameRate: Double = 120.0

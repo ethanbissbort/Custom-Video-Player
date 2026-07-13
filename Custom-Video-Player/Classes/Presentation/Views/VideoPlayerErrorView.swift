@@ -19,7 +19,7 @@ class VideoPlayerErrorView: UIView {
     private let dynamicSpacing: CGFloat = UIScreen.main.bounds.height * 0.055
 
     // MARK: - Callback
-    @objc private let onBackButtonClicked: () -> Void
+    private let onBackButtonClicked: () -> Void
 
     // MARK: - Initialization
     

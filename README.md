@@ -17,7 +17,7 @@ A feature-rich video player with custom playback controls, subtitle and video qu
 
 ## Requirements
 
-- iOS 11.0 or later
+- iOS 18.0 or later
 
 ## Installation
 
@@ -33,7 +33,7 @@ To integrate Custom Video Player into your Xcode project using CocoaPods, specif
 
 ```ruby
 source 'https://github.com/CocoaPods/Specs.git'
-platform :ios, '11.0'
+platform :ios, '18.0'
 use_frameworks!
 
 target '<Your Target Name>' do

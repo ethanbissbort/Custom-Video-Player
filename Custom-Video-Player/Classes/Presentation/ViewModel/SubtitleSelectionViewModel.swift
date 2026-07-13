@@ -4,9 +4,9 @@ import Foundation
 class SubtitleSelectionViewModel {
     // MARK: - Properties
     
-    private var supportedLanguages: [AVMediaSelectionOption]
-    
-    private var subtitleOptions: [String]
+    private let supportedLanguages: [AVMediaSelectionOption]
+
+    private let subtitleOptions: [String]
     
     var selectedItemIndex: Int = 0
     
@@ -14,11 +14,9 @@ class SubtitleSelectionViewModel {
         subtitleOptions.count
     }
     
-    /// Closure to get the subtitle option string at a given index.
-    var subtitleOption: (Int) -> String {
-        return { index in
-            self.subtitleOptions[index]
-        }
+    /// Returns the subtitle option string at a given index.
+    func subtitleOption(_ index: Int) -> String {
+        return subtitleOptions[index]
     }
     
     /// The selected subtitle track.

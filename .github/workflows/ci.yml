@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (iOS, SwiftPM)
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Show toolchain versions
+        run: |
+          swift --version
+          xcodebuild -version
+
+      # The repo root contains a dangling `_Pods.xcodeproj` symlink (points at the
+      # CocoaPods-generated project, which only exists after `pod install`). Left
+      # in place, xcodebuild's project auto-discovery trips over it instead of
+      # building the Swift package. Remove it from the checkout before building.
+      - name: Remove dangling Pods symlink
+        run: rm -f _Pods.xcodeproj
+
+      - name: Resolve dependencies
+        run: xcodebuild -resolvePackageDependencies -scheme CustomVideoPlayer
+
+      - name: Build for iOS Simulator
+        run: |
+          xcodebuild build \
+            -scheme CustomVideoPlayer \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
+
+  example:
+    name: Build Example (CocoaPods)
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: Example
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          pod --version
+
+      - name: CocoaPods install
+        run: pod install
+
+      # Builds the example app, the locally-pathed CustomVideoPlayer pod, and the
+      # test bundle (the shared scheme wires the tests as a testable), so the whole
+      # CocoaPods consumer path is compiled. `build-for-testing` compiles the test
+      # target without needing a booted simulator.
+      - name: Build example workspace for iOS Simulator
+        run: |
+          xcodebuild build-for-testing \
+            -workspace Custom-Video-Player.xcworkspace \
+            -scheme Custom-Video-Player-Example \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO

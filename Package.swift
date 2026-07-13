@@ -1,10 +1,10 @@
-// swift-tools-version:5.3
+// swift-tools-version:6.0
 import PackageDescription
 
 let package = Package(
     name: "CustomVideoPlayer",
     platforms: [
-        .iOS(.v11)
+        .iOS(.v18)
     ],
     products: [
         .library(
@@ -22,7 +22,11 @@ let package = Package(
                 "SnapKit"
             ],
             path: "Custom-Video-Player",
-            resources: [.copy("Assets/*")]
+            resources: [
+                .process("Assets/Color.xcassets"),
+                .process("Assets/Images.xcassets")
+            ]
         )
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
