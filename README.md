@@ -59,6 +59,19 @@ dependencies: [
 ]
 ```
 
+> **Building the package directly?** This is a UIKit library, so it must be built
+> for an **iOS** destination — not macOS. Plain `swift build` targets the host
+> (macOS), where `UIKit` does not exist, and fails with
+> `Unable to resolve module dependency: 'UIKit'`. In Xcode, set the run
+> destination to an iOS simulator or device (not "My Mac"). From the command
+> line, use `xcodebuild` with an iOS destination:
+>
+> ```bash
+> xcodebuild build \
+>   -scheme CustomVideoPlayer \
+>   -destination 'generic/platform=iOS Simulator'
+> ```
+
 ## Usage
 
 Initialize and configure the player with a video playlist. The playlist should have a _title_ and a list of _videos_, with each video having its own _title, URL, and isLiveContent_ attribute.
