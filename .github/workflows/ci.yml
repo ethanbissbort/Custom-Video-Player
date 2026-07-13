@@ -77,3 +77,13 @@ jobs:
             -scheme Custom-Video-Player-Example \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
+
+      # Validates the Mac Catalyst ("Marzipan") build path — the same app target
+      # compiled for macOS. Reuses the pods installed above.
+      - name: Build example workspace for Mac Catalyst
+        run: |
+          xcodebuild build \
+            -workspace Custom-Video-Player.xcworkspace \
+            -scheme Custom-Video-Player-Example \
+            -destination 'platform=macOS,variant=Mac Catalyst' \
+            CODE_SIGNING_ALLOWED=NO
