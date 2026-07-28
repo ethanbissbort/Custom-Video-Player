@@ -26,6 +26,11 @@ let package = Package(
                 .process("Assets/Color.xcassets"),
                 .process("Assets/Images.xcassets")
             ]
+        ),
+        .testTarget(
+            name: "CustomVideoPlayerTests",
+            dependencies: ["CustomVideoPlayer"],
+            path: "Tests/CustomVideoPlayerTests"
         )
     ],
     swiftLanguageModes: [.v5]

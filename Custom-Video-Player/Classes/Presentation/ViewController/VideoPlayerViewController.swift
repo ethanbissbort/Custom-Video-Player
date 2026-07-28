@@ -431,19 +431,17 @@ extension VideoPlayerViewController {
 
 extension VideoPlayerViewController: ABLoopViewControllerDelegate {
     func didSelectABLoop(_ loop: ABLoop?) {
+        // `setActiveLoop` already clears any active segment playlist, so the two modes are
+        // mutually exclusive by construction. Clearing the other mode again here would
+        // enqueue a second block on the same serial queue that nils the loop just set.
         abLoopManager.setActiveLoop(loop)
-        if loop != nil {
-            abLoopManager.setActiveSegmentPlaylist(nil)
-        }
         resumePlayer()
         resetControlsHiddenTimer()
     }
 
     func didSelectSegmentPlaylist(_ playlist: SegmentPlaylist?) {
+        // `setActiveSegmentPlaylist` already clears any active A-B loop — see above.
         abLoopManager.setActiveSegmentPlaylist(playlist)
-        if playlist != nil {
-            abLoopManager.setActiveLoop(nil)
-        }
         resumePlayer()
         resetControlsHiddenTimer()
     }
