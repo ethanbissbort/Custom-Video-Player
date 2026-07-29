@@ -78,22 +78,83 @@ final class M3u8Helper {
     /// - Parameter segments: A single row of the M3U8 manifest.
     /// - Returns: A `VideoQuality` object if parsing is successful, otherwise `nil`.
     private func quality(from segments: String) -> VideoQuality? {
-        let dataSegments = segments.components(separatedBy: ",")
+        let dataSegments = attributes(from: segments)
 
-        if let bandwidthSegments = dataSegments.first(where: { $0.contains(Constants.bandwidth) }),
-           let resolutionSegments = dataSegments.first(where: { $0.contains(Constants.resolution) }) {
-            
-            let bandwidth = bandwidthSegments.components(separatedBy: "=")
-            let resolution = resolutionSegments.components(separatedBy: "=")
-
-            if bandwidth.count > 1, resolution.count > 1,
-               let bitrate = Double(bandwidth[1]), 
-               let resolution = prettyResolution(from: resolution[1]) {
-                return VideoQuality(bitrate: bitrate, resolution: resolution)
-            }
+        if let bandwidthValue = value(ofAttribute: Constants.bandwidth, in: dataSegments),
+           let resolutionValue = value(ofAttribute: Constants.resolution, in: dataSegments),
+           let bitrate = Double(bandwidthValue),
+           let resolution = prettyResolution(from: resolutionValue) {
+            return VideoQuality(bitrate: bitrate, resolution: resolution)
         }
 
         return nil
+    }
+
+    /// Splits a manifest row into its comma-separated attributes.
+    ///
+    /// Only commas outside of a quoted value separate attributes, so a quoted list such as
+    /// `CODECS="avc1.4d401f,mp4a.40.2"` stays in one piece instead of fragmenting the row and
+    /// corrupting the attributes read from it.
+    ///
+    /// - Parameter row: A single row of the M3U8 manifest.
+    /// - Returns: The attributes of the row, still in `NAME=VALUE` form.
+    private func attributes(from row: String) -> [String] {
+        var result: [String] = []
+        var current = ""
+        var isQuoted = false
+
+        for character in row {
+            switch character {
+            case "\"":
+                isQuoted.toggle()
+                current.append(character)
+            case "," where !isQuoted:
+                result.append(current)
+                current = ""
+            default:
+                current.append(character)
+            }
+        }
+        result.append(current)
+
+        return result
+    }
+
+    /// Returns the value of the named attribute.
+    ///
+    /// The name is matched exactly, so `BANDWIDTH` never picks up the `AVERAGE-BANDWIDTH` of a
+    /// variant that happens to list the average first — which would advertise the average
+    /// bitrate as the peak one.
+    ///
+    /// - Parameters:
+    ///   - attribute: The name of the attribute to look up.
+    ///   - attributes: The attributes of a manifest row, in `NAME=VALUE` form.
+    /// - Returns: The attribute's value stripped of whitespace and enclosing quotes, or `nil`.
+    private func value(ofAttribute attribute: String, in attributes: [String]) -> String? {
+        for segment in attributes {
+            let components = segment.components(separatedBy: "=")
+            guard components.count > 1, name(from: components[0]) == attribute else { continue }
+            // Re-join so a value that legitimately contains "=" survives intact.
+            let attributeValue = components.dropFirst().joined(separator: "=")
+            return attributeValue
+                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        }
+
+        return nil
+    }
+
+    /// Normalises the name side of an attribute so it can be compared exactly.
+    ///
+    /// The first attribute of a row carries its tag (`#EXT-X-STREAM-INF:BANDWIDTH`), which is
+    /// dropped here along with any surrounding whitespace.
+    ///
+    /// - Parameter rawName: The text preceding the attribute's first "=".
+    /// - Returns: The bare attribute name.
+    private func name(from rawName: String) -> String {
+        let trimmed = rawName.trimmingCharacters(in: .whitespaces)
+        guard let tagSeparatorIndex = trimmed.lastIndex(of: ":") else { return trimmed }
+        return String(trimmed[trimmed.index(after: tagSeparatorIndex)...])
     }
 
     /// Converts a resolution string from the M3U8 manifest into a more readable format.

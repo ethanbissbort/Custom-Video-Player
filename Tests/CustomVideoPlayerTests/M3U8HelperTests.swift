@@ -110,7 +110,77 @@ final class M3U8HelperTests: XCTestCase {
         XCTAssertEqual(result[1].bitrate, 3_000_000)
     }
 
+    /// Regression test: rows were split on every comma before attributes were read, so a quoted
+    /// value containing commas fragmented the row and the fragments were mistaken for attributes.
+    func testParsesVariantsWithQuotedCodecsContainingCommas() {
+        let manifest = """
+        #EXTM3U
+        #EXT-X-STREAM-INF:BANDWIDTH=2560000,CODECS="avc1.4d401f,mp4a.40.2",RESOLUTION=1280x720
+        high.m3u8
+        """
+
+        let result = qualities(for: manifest)
+
+        XCTAssertEqual(result.count, 2, "A quoted CODECS list must not hide the variant.")
+        XCTAssertEqual(result[1].resolution, "720p")
+        XCTAssertEqual(result[1].bitrate, 2_560_000)
+    }
+
+    /// The corrupting case of the same defect: a fragment of a quoted value looked like an
+    /// attribute, so it was read in place of the real one and the variant was dropped entirely.
+    func testIgnoresAttributesThatAppearInsideAQuotedValue() {
+        let manifest = """
+        #EXTM3U
+        #EXT-X-STREAM-INF:BANDWIDTH=2560000,NAME="720p,RESOLUTION=whoops",RESOLUTION=1280x720
+        high.m3u8
+        """
+
+        let result = qualities(for: manifest)
+
+        XCTAssertEqual(result.count, 2, "The real RESOLUTION attribute must win over the quoted text.")
+        XCTAssertEqual(result[1].resolution, "720p")
+        XCTAssertEqual(result[1].bitrate, 2_560_000)
+    }
+
+    /// Regression test: the bandwidth lookup matched any attribute *containing* "BANDWIDTH", so a
+    /// variant listing AVERAGE-BANDWIDTH first advertised its average bitrate as the peak one.
+    func testPrefersPeakBandwidthOverAverageBandwidth() {
+        let manifest = """
+        #EXTM3U
+        #EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=1000000,BANDWIDTH=2560000,RESOLUTION=1280x720
+        high.m3u8
+        """
+
+        let result = qualities(for: manifest)
+
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result[1].bitrate, 2_560_000, "AVERAGE-BANDWIDTH must not stand in for BANDWIDTH.")
+    }
+
+    /// Ordering must not decide which bitrate is picked, so the peak wins from either position.
+    func testPrefersPeakBandwidthWhenAverageBandwidthIsListedLast() {
+        let manifest = """
+        #EXTM3U
+        #EXT-X-STREAM-INF:BANDWIDTH=2560000,RESOLUTION=1280x720,AVERAGE-BANDWIDTH=1000000
+        high.m3u8
+        """
+
+        XCTAssertEqual(qualities(for: manifest)[1].bitrate, 2_560_000)
+    }
+
     // MARK: - Malformed input
+
+    /// BANDWIDTH is required by the HLS specification; a variant that only declares the average
+    /// is malformed, and guessing a peak bitrate from it would mislabel the quality menu.
+    func testIgnoresVariantsThatOnlyDeclareAverageBandwidth() {
+        let manifest = """
+        #EXTM3U
+        #EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=1000000,RESOLUTION=1280x720
+        high.m3u8
+        """
+
+        XCTAssertEqual(qualities(for: manifest).map(\.resolution), ["Auto"])
+    }
 
     func testIgnoresVariantsMissingAnAttribute() {
         let manifest = """
@@ -125,8 +195,8 @@ final class M3U8HelperTests: XCTestCase {
     }
 
     func testReturnsOnlyAutoForNonManifestContent() {
-        // A 404 HTML body still reaches the parser today, because the HTTP status is
-        // never checked. It must not yield bogus quality entries.
+        // `APIClientService` now rejects non-2xx responses, but the parser stays the second
+        // line of defence: an error page must not yield bogus quality entries.
         let result = qualities(for: "<html><body>404 Not Found</body></html>")
 
         XCTAssertEqual(result.map(\.resolution), ["Auto"])
