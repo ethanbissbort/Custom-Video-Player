@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import os
 
 /// Delegate protocol for A-B loop events
 public protocol ABLoopManagerDelegate: AnyObject {
@@ -9,11 +10,35 @@ public protocol ABLoopManagerDelegate: AnyObject {
 }
 
 /// Manages A-B loop functionality and segment playlists
+///
+/// ## Thread safety
+///
+/// Every public method is safe to call from any queue. *All* mutable state is owned by
+/// a single serial queue, `stateQueue`: the persisted `videoLoopData` dictionary as well
+/// as the activation state (`currentActiveLoop`, `currentSegmentPlaylist`,
+/// `currentSegment`). There is deliberately only one queue — a second lock would create
+/// a lock-ordering hazard, because several operations have to update the stored data and
+/// the activation state as one atomic step (removing a loop that happens to be active,
+/// for example).
+///
+/// Two rules keep the queue re-entrancy-safe, and both must be preserved by future edits:
+///
+/// 1. A public method takes the queue exactly once, in a single `stateQueue.sync`/`async`
+///    block. It must never call another public method, and never nest `stateQueue.sync`
+///    inside a block already running on `stateQueue` — that deadlocks immediately.
+/// 2. Private helpers whose name ends in `Locked` assume they are *already* running on
+///    `stateQueue`; they never take the queue themselves.
+///
+/// The queue never blocks on another queue, so there is no inversion: delegate callbacks
+/// are always delivered with `DispatchQueue.main.async`, never synchronously.
 public class ABLoopManager {
     // MARK: - Properties
 
     weak var delegate: ABLoopManagerDelegate?
 
+    /// All persisted loop data, keyed by video identifier.
+    ///
+    /// - Important: Guarded by `stateQueue`. Never touch it outside a queue block.
     private var videoLoopData: [String: VideoLoopData] = [:]
     private var currentActiveLoop: ABLoop?
     private var currentSegmentPlaylist: SegmentPlaylist?
@@ -22,13 +47,36 @@ public class ABLoopManager {
     private let userDefaults = UserDefaults.standard
     private let storageKey = ABLoopConstants.storageKey
 
+    /// Key under which a stored blob that failed to decode is quarantined.
+    ///
+    /// See `loadAllLoopDataLocked()` for the recovery policy. Not private so tests can
+    /// assert that the policy holds.
+    static let corruptedStorageKey = ABLoopConstants.storageKey + ".corrupted"
+
+    /// `true` when the last load found a stored blob it could not decode.
+    ///
+    /// While set, `saveLoopDataLocked()` refuses to overwrite storage with an empty
+    /// dictionary, so an unreadable-but-present blob is never replaced by "no loops".
+    ///
+    /// - Important: Guarded by `stateQueue`.
+    private var hasUnreadableStoredData = false
+
+    /// Libraries must not print to the host app's console; diagnostics go to the
+    /// unified log instead.
+    private let logger = Logger(subsystem: "com.customvideoplayer", category: "ABLoopManager")
+
     /// Serial queue for thread-safe state management
     private let stateQueue = DispatchQueue(label: "com.customvideoplayer.abloop.state")
 
     // MARK: - Initialization
 
     public init() {
-        loadAllLoopData()
+        // `init` cannot already be executing on `stateQueue` (nothing else holds a
+        // reference to `self` yet), so this synchronous hop is safe and gives the load
+        // a well-defined happens-before edge with every later access.
+        stateQueue.sync {
+            loadAllLoopDataLocked()
+        }
     }
 
     // MARK: - A-B Loop Management
@@ -73,40 +121,46 @@ public class ABLoopManager {
         }
     }
 
-    /// Adds a new A-B loop for a video
+    /// Adds a new A-B loop for a video (thread-safe)
     ///
     /// - Parameters:
     ///   - loop: The A-B loop to add
     ///   - videoIdentifier: Identifier for the video
     public func addABLoop(_ loop: ABLoop, for videoIdentifier: String) {
-        if videoLoopData[videoIdentifier] == nil {
-            videoLoopData[videoIdentifier] = VideoLoopData(videoIdentifier: videoIdentifier)
+        stateQueue.sync {
+            var data = videoLoopData[videoIdentifier] ?? VideoLoopData(videoIdentifier: videoIdentifier)
+            data.abLoops.append(loop)
+            videoLoopData[videoIdentifier] = data
+            saveLoopDataLocked()
         }
-        videoLoopData[videoIdentifier]?.abLoops.append(loop)
-        saveLoopData()
     }
 
-    /// Removes an A-B loop
+    /// Removes an A-B loop (thread-safe)
+    ///
+    /// Removing the loop and deactivating it happen in one queue block so the stored
+    /// data and the activation state can never be observed disagreeing.
     ///
     /// - Parameters:
     ///   - loopId: ID of the loop to remove
     ///   - videoIdentifier: Identifier for the video
     public func removeABLoop(withId loopId: UUID, for videoIdentifier: String) {
-        videoLoopData[videoIdentifier]?.abLoops.removeAll { $0.id == loopId }
         stateQueue.sync {
+            videoLoopData[videoIdentifier]?.abLoops.removeAll { $0.id == loopId }
             if currentActiveLoop?.id == loopId {
                 currentActiveLoop = nil
             }
+            saveLoopDataLocked()
         }
-        saveLoopData()
     }
 
-    /// Gets all A-B loops for a video
+    /// Gets all A-B loops for a video (thread-safe)
     ///
     /// - Parameter videoIdentifier: Identifier for the video
     /// - Returns: Array of A-B loops
     public func getABLoops(for videoIdentifier: String) -> [ABLoop] {
-        return videoLoopData[videoIdentifier]?.abLoops ?? []
+        return stateQueue.sync {
+            return videoLoopData[videoIdentifier]?.abLoops ?? []
+        }
     }
 
     // MARK: - Segment Playlist Management
@@ -183,75 +237,100 @@ public class ABLoopManager {
         }
     }
 
-    /// Adds a new segment playlist for a video
+    /// Adds a new segment playlist for a video (thread-safe)
     ///
     /// - Parameters:
     ///   - playlist: The segment playlist to add
     ///   - videoIdentifier: Identifier for the video
     public func addSegmentPlaylist(_ playlist: SegmentPlaylist, for videoIdentifier: String) {
-        if videoLoopData[videoIdentifier] == nil {
-            videoLoopData[videoIdentifier] = VideoLoopData(videoIdentifier: videoIdentifier)
+        stateQueue.sync {
+            var data = videoLoopData[videoIdentifier] ?? VideoLoopData(videoIdentifier: videoIdentifier)
+            data.segmentPlaylists.append(playlist)
+            videoLoopData[videoIdentifier] = data
+            saveLoopDataLocked()
         }
-        videoLoopData[videoIdentifier]?.segmentPlaylists.append(playlist)
-        saveLoopData()
     }
 
-    /// Removes a segment playlist
+    /// Removes a segment playlist (thread-safe)
     ///
     /// - Parameters:
     ///   - playlistId: ID of the playlist to remove
     ///   - videoIdentifier: Identifier for the video
     public func removeSegmentPlaylist(withId playlistId: UUID, for videoIdentifier: String) {
-        videoLoopData[videoIdentifier]?.segmentPlaylists.removeAll { $0.id == playlistId }
         stateQueue.sync {
+            videoLoopData[videoIdentifier]?.segmentPlaylists.removeAll { $0.id == playlistId }
             if currentSegmentPlaylist?.id == playlistId {
                 currentSegmentPlaylist = nil
                 currentSegment = nil
             }
+            saveLoopDataLocked()
         }
-        saveLoopData()
     }
 
-    /// Gets all segment playlists for a video
+    /// Gets all segment playlists for a video (thread-safe)
     ///
     /// - Parameter videoIdentifier: Identifier for the video
     /// - Returns: Array of segment playlists
     public func getSegmentPlaylists(for videoIdentifier: String) -> [SegmentPlaylist] {
-        return videoLoopData[videoIdentifier]?.segmentPlaylists ?? []
+        return stateQueue.sync {
+            return videoLoopData[videoIdentifier]?.segmentPlaylists ?? []
+        }
     }
 
-    /// Updates an existing segment playlist
+    /// Updates an existing segment playlist (thread-safe)
     ///
     /// - Parameters:
     ///   - playlist: The updated playlist
     ///   - videoIdentifier: Identifier for the video
     public func updateSegmentPlaylist(_ playlist: SegmentPlaylist, for videoIdentifier: String) {
-        if let index = videoLoopData[videoIdentifier]?.segmentPlaylists.firstIndex(where: { $0.id == playlist.id }) {
-            videoLoopData[videoIdentifier]?.segmentPlaylists[index] = playlist
-            stateQueue.sync {
-                if currentSegmentPlaylist?.id == playlist.id {
-                    currentSegmentPlaylist = playlist
-                }
+        stateQueue.sync {
+            guard let index = videoLoopData[videoIdentifier]?
+                .segmentPlaylists
+                .firstIndex(where: { $0.id == playlist.id }) else {
+                return
             }
-            saveLoopData()
+
+            videoLoopData[videoIdentifier]?.segmentPlaylists[index] = playlist
+            if currentSegmentPlaylist?.id == playlist.id {
+                currentSegmentPlaylist = playlist
+            }
+            saveLoopDataLocked()
         }
     }
 
     // MARK: - Persistence
 
-    /// Saves all loop data to UserDefaults
-    private func saveLoopData() {
+    /// Saves all loop data to UserDefaults.
+    ///
+    /// - Important: Must be called from inside a `stateQueue` block. It never takes the
+    ///   queue itself, because every caller already holds it.
+    private func saveLoopDataLocked() {
+        // Non-destructive policy: when the last load could not decode what is in storage,
+        // that blob is still the user's only in-place copy of their loops. Writing an
+        // empty array over it would turn a recoverable decode failure into permanent
+        // data loss, so the write is skipped until there is actually something to store.
+        // (A copy is also quarantined under `corruptedStorageKey`; see
+        // `loadAllLoopDataLocked()`.)
+        if videoLoopData.isEmpty && hasUnreadableStoredData {
+            logger.notice("Skipped save: refusing to overwrite unreadable stored loop data with an empty set.")
+            return
+        }
+
         let encoder = JSONEncoder()
         do {
             let encoded = try encoder.encode(Array(videoLoopData.values))
             userDefaults.set(encoded, forKey: storageKey)
+            // Storage now holds something we wrote, so it is readable by definition.
+            hasUnreadableStoredData = false
         } catch {
-            print("Failed to save loop data: \(error)")
+            logger.error("Failed to save A-B loop data: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    /// Loads all loop data from UserDefaults
-    private func loadAllLoopData() {
+    /// Loads all loop data from UserDefaults.
+    ///
+    /// - Important: Must be called from inside a `stateQueue` block.
+    private func loadAllLoopDataLocked() {
         guard let data = userDefaults.data(forKey: storageKey) else {
             return
         }
@@ -259,35 +338,66 @@ public class ABLoopManager {
         let decoder = JSONDecoder()
         do {
             let loopDataArray = try decoder.decode([VideoLoopData].self, from: data)
-            videoLoopData = Dictionary(uniqueKeysWithValues: loopDataArray.map { ($0.videoIdentifier, $0) })
+            // `Dictionary(uniqueKeysWithValues:)` traps on a duplicate key, which would
+            // crash the host app during player construction over nothing worse than a
+            // corrupt or hand-edited defaults blob. Collapse duplicates instead, keeping
+            // whichever entry carries more data so the merge loses the least; ties keep
+            // the earlier entry, so the outcome is deterministic.
+            let keyedEntries: [(String, VideoLoopData)] = loopDataArray.map { ($0.videoIdentifier, $0) }
+            videoLoopData = Dictionary(keyedEntries) { (existing: VideoLoopData, duplicate: VideoLoopData) -> VideoLoopData in
+                let existingCount = existing.abLoops.count + existing.segmentPlaylists.count
+                let duplicateCount = duplicate.abLoops.count + duplicate.segmentPlaylists.count
+                return duplicateCount > existingCount ? duplicate : existing
+            }
+            hasUnreadableStoredData = false
         } catch {
-            print("Failed to load loop data: \(error)")
+            // Decode-failure policy: never destroy data we cannot read.
+            //
+            // 1. The undecodable blob is quarantined under `corruptedStorageKey` so a
+            //    future schema migration can still recover it. It is only written if
+            //    nothing is quarantined yet, so the oldest — and therefore most likely
+            //    intact — copy wins rather than being overwritten by later garbage.
+            // 2. `hasUnreadableStoredData` stops the next mutation from saving an empty
+            //    dictionary over the original blob (see `saveLoopDataLocked()`).
+            // 3. In-memory state stays empty: the manager reports "no loops" rather than
+            //    guessing at partially decoded contents.
+            hasUnreadableStoredData = true
+            if userDefaults.data(forKey: Self.corruptedStorageKey) == nil {
+                userDefaults.set(data, forKey: Self.corruptedStorageKey)
+            }
+            logger.error(
+                "Failed to load A-B loop data; quarantined \(data.count, privacy: .public) bytes for recovery: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
-    /// Clears all loop data for a specific video
+    /// Clears all loop data for a specific video (thread-safe)
     ///
     /// - Parameter videoIdentifier: Identifier for the video
     public func clearLoopData(for videoIdentifier: String) {
-        videoLoopData.removeValue(forKey: videoIdentifier)
         stateQueue.sync {
+            videoLoopData.removeValue(forKey: videoIdentifier)
             if currentActiveLoop != nil || currentSegmentPlaylist?.videoIdentifier == videoIdentifier {
                 currentActiveLoop = nil
                 currentSegmentPlaylist = nil
                 currentSegment = nil
             }
+            saveLoopDataLocked()
         }
-        saveLoopData()
     }
 
-    /// Clears all loop data
+    /// Clears all loop data (thread-safe)
     public func clearAllLoopData() {
-        videoLoopData.removeAll()
         stateQueue.sync {
+            videoLoopData.removeAll()
             currentActiveLoop = nil
             currentSegmentPlaylist = nil
             currentSegment = nil
+            userDefaults.removeObject(forKey: storageKey)
+            // An explicit wipe is the one case where discarding a quarantined blob is
+            // exactly what the caller asked for.
+            userDefaults.removeObject(forKey: Self.corruptedStorageKey)
+            hasUnreadableStoredData = false
         }
-        userDefaults.removeObject(forKey: storageKey)
     }
 }

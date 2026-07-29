@@ -1,4 +1,5 @@
 import AVFoundation
+import Foundation
 import XCTest
 @testable import CustomVideoPlayer
 
@@ -182,5 +183,234 @@ final class ABLoopManagerTests: XCTestCase {
         let reloaded = ABLoopManager()
 
         XCTAssertEqual(reloaded.getABLoops(for: videoID), [loop], "Loops must persist across launches.")
+    }
+
+    /// An intentional removal of the last loop must still reach storage — the
+    /// "don't overwrite good data with an empty set" guard only applies after a load
+    /// that failed to decode, never to a deliberate edit.
+    func testRemovingTheLastLoopIsPersisted() {
+        let loop = makeLoop(fromSeconds: 0, toSeconds: 5)
+        manager.addABLoop(loop, for: videoID)
+
+        manager.removeABLoop(withId: loop.id, for: videoID)
+
+        XCTAssertTrue(
+            ABLoopManager().getABLoops(for: videoID).isEmpty,
+            "An intentional removal must be persisted, not suppressed."
+        )
+    }
+
+    // MARK: - Thread safety
+
+    /// `videoLoopData` used to be mutated on the caller's thread while only the
+    /// activation state was queue-guarded, so a concurrent add and read could corrupt
+    /// the dictionary or silently drop a write. All access now goes through the single
+    /// serial `stateQueue`, and interleaving reads must not cost a write.
+    func testConcurrentAddsAndReadsDoNotCorruptLoopStorage() {
+        let manager = self.manager!
+        let iterations = 64
+
+        DispatchQueue.concurrentPerform(iterations: iterations) { index in
+            if index.isMultiple(of: 2) {
+                manager.addABLoop(makeLoop(fromSeconds: index, toSeconds: index + 1), for: videoID)
+            } else {
+                _ = manager.getABLoops(for: videoID)
+            }
+        }
+
+        let loops = manager.getABLoops(for: videoID)
+        XCTAssertEqual(loops.count, iterations / 2, "A lost write means the dictionary raced.")
+        XCTAssertEqual(
+            Set(loops.map(\.id)).count,
+            iterations / 2,
+            "Every concurrently added loop must survive intact and distinct."
+        )
+    }
+
+    /// Inserting *new* keys concurrently is the case that actually corrupts a
+    /// `Dictionary` (it can reallocate storage), so exercise several videos at once.
+    func testConcurrentAddsAcrossVideosDoNotCorruptTheDictionary() {
+        let manager = self.manager!
+        let videoIDs = (0 ..< 8).map { "https://example.com/concurrent-\($0).m3u8" }
+        let loopsPerVideo = 8
+
+        DispatchQueue.concurrentPerform(iterations: videoIDs.count * loopsPerVideo) { index in
+            let identifier = videoIDs[index % videoIDs.count]
+            manager.addABLoop(makeLoop(fromSeconds: index, toSeconds: index + 1), for: identifier)
+        }
+
+        for identifier in videoIDs {
+            XCTAssertEqual(
+                manager.getABLoops(for: identifier).count,
+                loopsPerVideo,
+                "Concurrent inserts of new keys dropped entries for \(identifier)."
+            )
+        }
+    }
+
+    /// Every public method takes `stateQueue` exactly once, so the whole API can be
+    /// driven back to back off the main queue without re-entering the queue.
+    ///
+    /// The expectation timeout is what turns a re-entrancy bug into a test failure
+    /// instead of a hung CI job.
+    func testCommonCallSequencesDoNotDeadlock() {
+        let manager = self.manager!
+        let videoID = self.videoID
+        let loop = makeLoop(fromSeconds: 0, toSeconds: 5)
+        let playlist = makePlaylist()
+        let updatedPlaylist = SegmentPlaylist(
+            id: playlist.id,
+            name: "Updated",
+            segments: playlist.segments,
+            videoIdentifier: videoID,
+            isLooping: true
+        )
+        let farFuture = CMTime(seconds: 99, preferredTimescale: 600)
+        let finished = expectation(description: "the full call sequence returns")
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            manager.addABLoop(loop, for: videoID)
+            manager.setActiveLoop(loop)
+            _ = manager.getActiveLoop()
+            _ = manager.getABLoops(for: videoID)
+            _ = manager.shouldLoop(at: farFuture)
+
+            manager.addSegmentPlaylist(playlist, for: videoID)
+            manager.updateSegmentPlaylist(updatedPlaylist, for: videoID)
+            _ = manager.getSegmentPlaylists(for: videoID)
+            manager.setActiveSegmentPlaylist(updatedPlaylist)
+            _ = manager.getActiveSegmentPlaylist()
+            _ = manager.getCurrentSegment()
+            _ = manager.shouldAdvanceSegment(at: farFuture)
+
+            manager.removeSegmentPlaylist(withId: playlist.id, for: videoID)
+            manager.removeABLoop(withId: loop.id, for: videoID)
+            manager.clearLoopData(for: videoID)
+            manager.clearAllLoopData()
+
+            // `init` loads under the same queue; constructing off the main queue must
+            // not deadlock either.
+            _ = ABLoopManager()
+            finished.fulfill()
+        }
+
+        wait(for: [finished], timeout: 10)
+    }
+
+    /// Mutations and reads interleaved from several queues at once, including the
+    /// activation state, must all complete — the two halves of the state share one
+    /// queue precisely so they can be updated together without a second lock.
+    func testInterleavedMutationAndActivationDoNotDeadlock() {
+        let manager = self.manager!
+        let loops = (0 ..< 16).map { makeLoop(fromSeconds: $0, toSeconds: $0 + 1) }
+        let playlist = makePlaylist()
+
+        DispatchQueue.concurrentPerform(iterations: loops.count) { index in
+            let loop = loops[index]
+            manager.addABLoop(loop, for: videoID)
+            manager.setActiveLoop(loop)
+            _ = manager.shouldLoop(at: CMTime(seconds: 99, preferredTimescale: 600))
+            manager.addSegmentPlaylist(playlist, for: videoID)
+            _ = manager.getSegmentPlaylists(for: videoID)
+            manager.removeABLoop(withId: loop.id, for: videoID)
+        }
+
+        XCTAssertTrue(
+            manager.getABLoops(for: videoID).isEmpty,
+            "Each loop was added and removed, so none may remain."
+        )
+        XCTAssertEqual(manager.getSegmentPlaylists(for: videoID).count, loops.count)
+    }
+
+    // MARK: - Persistence recovery
+
+    /// A stored blob that cannot be decoded is quarantined rather than discarded, and
+    /// a subsequent empty save must not replace it — losing loops to one bad byte was
+    /// the old behaviour.
+    func testUnreadableStoredDataIsQuarantinedAndNotOverwritten() {
+        let corrupted = Data("this is not JSON".utf8)
+        UserDefaults.standard.set(corrupted, forKey: ABLoopConstants.storageKey)
+        UserDefaults.standard.removeObject(forKey: ABLoopManager.corruptedStorageKey)
+
+        let reloaded = ABLoopManager()
+
+        XCTAssertTrue(
+            reloaded.getABLoops(for: videoID).isEmpty,
+            "Undecodable storage must surface as no loops, not as guessed data."
+        )
+        XCTAssertEqual(
+            UserDefaults.standard.data(forKey: ABLoopManager.corruptedStorageKey),
+            corrupted,
+            "The unreadable blob must be preserved so a future migration can recover it."
+        )
+
+        // Mutations that leave the manager empty must not write "[]" over the blob.
+        reloaded.removeABLoop(withId: UUID(), for: videoID)
+        reloaded.clearLoopData(for: "https://example.com/never-stored.m3u8")
+
+        XCTAssertEqual(
+            UserDefaults.standard.data(forKey: ABLoopConstants.storageKey),
+            corrupted,
+            "An empty save must not destroy data that merely failed to decode."
+        )
+    }
+
+    /// Once there is real data to store again, saving resumes normally and the
+    /// quarantined copy is left alone.
+    func testDataWrittenAfterACorruptLoadPersistsAndKeepsTheBackup() {
+        let corrupted = Data("{ truncated".utf8)
+        UserDefaults.standard.set(corrupted, forKey: ABLoopConstants.storageKey)
+        UserDefaults.standard.removeObject(forKey: ABLoopManager.corruptedStorageKey)
+
+        let recovered = ABLoopManager()
+        let loop = makeLoop(fromSeconds: 3, toSeconds: 9, name: "After recovery")
+        recovered.addABLoop(loop, for: videoID)
+
+        XCTAssertEqual(
+            ABLoopManager().getABLoops(for: videoID),
+            [loop],
+            "Data written after a failed load must persist normally."
+        )
+        XCTAssertEqual(
+            UserDefaults.standard.data(forKey: ABLoopManager.corruptedStorageKey),
+            corrupted,
+            "The quarantined blob must survive later writes."
+        )
+    }
+
+    /// `Dictionary(uniqueKeysWithValues:)` traps on a duplicate key, so a stored blob
+    /// with two entries for the same video used to crash the app at player
+    /// construction. Duplicates are now collapsed, keeping the richer entry.
+    func testDuplicateVideoIdentifiersInStorageDoNotTrap() throws {
+        let sparse = VideoLoopData(
+            videoIdentifier: videoID,
+            abLoops: [makeLoop(fromSeconds: 0, toSeconds: 1)]
+        )
+        let rich = VideoLoopData(
+            videoIdentifier: videoID,
+            abLoops: [
+                makeLoop(fromSeconds: 10, toSeconds: 11, name: "Kept"),
+                makeLoop(fromSeconds: 20, toSeconds: 21, name: "Also kept")
+            ]
+        )
+
+        // Either encounter order must resolve the same way.
+        for stored in [[sparse, rich], [rich, sparse]] {
+            let encoded = try JSONEncoder().encode(stored)
+            UserDefaults.standard.set(encoded, forKey: ABLoopConstants.storageKey)
+            UserDefaults.standard.removeObject(forKey: ABLoopManager.corruptedStorageKey)
+
+            let reloaded = ABLoopManager()
+
+            XCTAssertEqual(
+                reloaded.getABLoops(for: videoID),
+                rich.abLoops,
+                "Duplicate identifiers must collapse deterministically onto the richer entry."
+            )
+            XCTAssertNil(
+                UserDefaults.standard.data(forKey: ABLoopManager.corruptedStorageKey),
+                "A duplicate key is decodable, so nothing should be quarantined."
+            )
+        }
     }
 }
