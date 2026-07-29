@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
 
   s.homepage         = 'https://github.com/ethanbissbort/Custom-Video-Player'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
-  s.author           = { 'Ajay Kumar' => 'ajayyasodha@gmail.com', 'Ethan Bissbort' => 'ethanbissbort@gmail.com' }
+  s.author           = { 'Ajay Kumar' => 'ajayyasodha@gmail.com', 'Ethan Bissbort' => 'legal@fluxology.ca' }
   s.source           = { :git => 'https://github.com/ethanbissbort/Custom-Video-Player.git', :tag => s.version.to_s }
 
   s.ios.deployment_target = '18.0'
