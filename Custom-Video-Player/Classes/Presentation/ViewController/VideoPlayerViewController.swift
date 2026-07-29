@@ -1,14 +1,24 @@
 import UIKit
 import AVKit
 import AVFoundation
+import os
 
 public class VideoPlayerViewController: UIViewController {
     let viewModel: VideoPlayerViewModel
     let coordinator: VideoPlayerCoordinator
     let abLoopManager = ABLoopManager()
 
+    /// A library must not `print` into the host app's console; route diagnostics through
+    /// the unified log instead, matching `ABLoopManager`.
+    private let logger = Logger(subsystem: "com.customvideoplayer", category: "VideoPlayerViewController")
+
     private var periodicTimeObserver: Any?
     private var didSetupControls: Bool = false
+    /// Set when an audio session interruption pauses playback that was actually in progress, so
+    /// that `.ended` only resumes what the interruption stopped. Without it a video the user had
+    /// deliberately paused before the phone rang would start playing again on its own, because
+    /// `.shouldResume` reflects the *system's* willingness to resume, not the user's intent.
+    private var didPauseForInterruption: Bool = false
     private var controlsHiddenTimer: Timer?
     private let controlsHideDelay: TimeInterval = 3.0
     var player: AVPlayer?
@@ -92,6 +102,9 @@ public class VideoPlayerViewController: UIViewController {
     
     deinit {
         playerItem?.removeObserver(self, forKeyPath: "status")
+        // Buffering-recovery observers, registered alongside "status" in `addObservers()`.
+        playerItem?.removeObserver(self, forKeyPath: "playbackLikelyToKeepUp")
+        playerItem?.removeObserver(self, forKeyPath: "playbackBufferEmpty")
 
         // Remove runtime error handling notifications
         NotificationCenter.default.removeObserver(
@@ -114,6 +127,27 @@ public class VideoPlayerViewController: UIViewController {
             name: UIApplication.didEnterBackgroundNotification,
             object: nil
         )
+
+        // Remove audio session notifications
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+
+        // An AVPlayerLayer retains its AVPlayer, so a layer left in the layer tree keeps the whole
+        // player graph alive for as long as the view hierarchy does. Detach before discarding.
+        playerLayer?.removeFromSuperlayer()
+        playerLayer = nil
+
+        // Hand the audio session back so other apps can resume theirs. Deliberately placed above
+        // the live-content guard below, which returns early.
+        deactivateAudioSession()
 
         guard let isLiveContent = viewModel.isLiveContent, !isLiveContent else { return }
         if let periodicTimeObserver = periodicTimeObserver {
@@ -140,6 +174,7 @@ extension VideoPlayerViewController {
 
     private func setupPlayer() {
         guard let videoURL = viewModel.url else { return }
+        activateAudioSession()
         activityIndicatorView.startAnimating()
         playerItem = AVPlayerItem(url: videoURL)
         if let subtitleStyling = subtitleStyling {
@@ -148,6 +183,10 @@ extension VideoPlayerViewController {
         player = AVPlayer(playerItem: playerItem)
         addObservers()
         fetchSupportedQualities()
+        // Defensive: `resetPlayerItems()` already detaches the outgoing layer, but this also covers
+        // any path that reaches `setupPlayer()` twice without a reset in between. Leaving a stale
+        // layer in the tree would both stack sublayers and pin the previous AVPlayer in memory.
+        playerLayer?.removeFromSuperlayer()
         playerLayer = AVPlayerLayer(player: player)
         guard let playerLayer = playerLayer else { return }
         view.backgroundColor = .black
@@ -227,11 +266,153 @@ extension VideoPlayerViewController {
     }
 }
 
+// MARK: - Audio Session
+
+extension VideoPlayerViewController {
+    /// Configures and activates the shared audio session for video playback.
+    ///
+    /// The `.playback` category is what makes playback audible while the hardware ring/silent
+    /// switch is engaged; without it the video plays completely silently. `.moviePlayback` is the
+    /// mode Apple documents for long-form video (it enables the appropriate signal processing).
+    ///
+    /// Every call is wrapped in `do`/`catch` on purpose: a session failure (another app holding an
+    /// exclusive route, a denied category, …) must degrade to silent playback rather than trap the
+    /// host app. This is a library — it never gets to decide that the process should die.
+    private func activateAudioSession() {
+        let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setCategory(.playback, mode: .moviePlayback)
+            try audioSession.setActive(true)
+        } catch {
+            logger.error("Failed to configure the audio session for playback: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Releases the shared audio session on teardown.
+    ///
+    /// `.notifyOthersOnDeactivation` lets apps that were interrupted by us (music, podcasts) resume
+    /// on their own; without it they stay silent until the user restarts them by hand.
+    private func deactivateAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        } catch {
+            logger.error("Failed to deactivate the audio session: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Handles audio session interruptions (incoming call, Siri, another app taking the session).
+    ///
+    /// On `.began` the system has *already* silenced us, so the player, `viewModel.playerState` and
+    /// the play/pause button image are all brought in line — otherwise the UI keeps claiming the
+    /// video is playing while nothing moves.
+    @objc private func handleAudioSessionInterruption(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue)
+        else {
+            return
+        }
+
+        // `InterruptionOptions` is a value type, so reading it here and capturing it is safe even
+        // when the block below runs later on the main queue.
+        let options = AVAudioSession.InterruptionOptions(
+            rawValue: (userInfo[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
+        )
+
+        switch type {
+        case .began:
+            runOnMainThread { [weak self] in
+                guard let self = self else { return }
+                self.didPauseForInterruption = self.viewModel.playerState == .play
+                self.pausePlayer()
+            }
+        case .ended:
+            runOnMainThread { [weak self] in
+                guard let self = self else { return }
+                // Only resume when the system says we may (anything else — e.g. the user started
+                // another app's audio — means we must stay paused) and when the interruption is
+                // what stopped us in the first place.
+                let shouldResume = self.didPauseForInterruption && options.contains(.shouldResume)
+                // The interruption is over either way, so the flag is always cleared.
+                self.didPauseForInterruption = false
+                guard shouldResume else { return }
+                // The session was deactivated by the interruption, so it has to be reactivated
+                // before `play()` will produce any sound.
+                self.activateAudioSession()
+                self.resumePlayer()
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    /// Handles output route changes.
+    ///
+    /// `.oldDeviceUnavailable` is the "headphones were unplugged / Bluetooth went away" case. Per
+    /// Apple's HIG playback must pause there, so audio never suddenly blasts out of the built-in
+    /// speaker. Every other reason (a *new* device becoming available, a category change, …) is
+    /// intentionally ignored — pausing on those would be user-hostile.
+    @objc private func handleAudioSessionRouteChange(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue),
+              reason == .oldDeviceUnavailable
+        else {
+            return
+        }
+
+        runOnMainThread { [weak self] in
+            guard let self = self else { return }
+            self.pausePlayer()
+        }
+    }
+}
+
+// MARK: - Main Thread Dispatch
+
+extension VideoPlayerViewController {
+    /// Runs `work` on the main queue, executing it inline when the caller is already on main.
+    ///
+    /// AVFoundation makes no guarantee about which thread KVO callbacks and `AVPlayerItem`
+    /// notifications are delivered on — for HLS they routinely arrive on a background queue — yet
+    /// every one of those handlers adds subviews, installs SnapKit constraints or drives the
+    /// activity indicator. Marshalling is therefore mandatory.
+    ///
+    /// The inline fast path keeps main-thread callbacks synchronous, which preserves the ordering
+    /// the `didSetupControls` gate was written against. Correctness of that gate does not depend on
+    /// ordering anyway: it is read and written on the main thread only, so whichever of the
+    /// `duration`/`status` blocks runs second sees `true` and skips the duplicate setup.
+    ///
+    /// `internal` (not `private`): called from VideoPlayerViewController+ErrorHandling.swift,
+    /// which is a separate file, so `private` would not compile.
+    func runOnMainThread(_ work: @escaping () -> Void) {
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
+    }
+}
+
 // MARK: - Observers
 
 extension VideoPlayerViewController {
     private func addObservers() {
         playerItem?.addObserver(self, forKeyPath: "status", options: [.new, .initial], context: nil)
+
+        // Buffering-recovery observers. `.AVPlayerItemPlaybackStalled` tells us when playback stops,
+        // but nothing tells us when it can continue — these do, which is what lets the loader be
+        // torn down again (see `handlePlaybackBufferingChange()`).
+        //
+        // The strings are the *Objective-C* property names: `AVPlayerItem` declares them as
+        // `playbackLikelyToKeepUp` / `playbackBufferEmpty` with `getter=isPlaybackLikelyToKeepUp` /
+        // `getter=isPlaybackBufferEmpty`. String-based KVO resolves against the Objective-C name, so
+        // the Swift spellings would silently never fire.
+        //
+        // `.initial` is deliberately omitted (unlike "status"/"duration"): it would fire
+        // synchronously inside `setupPlayer()`, before the item has loaded anything.
+        playerItem?.addObserver(self, forKeyPath: "playbackLikelyToKeepUp", options: [.new], context: nil)
+        playerItem?.addObserver(self, forKeyPath: "playbackBufferEmpty", options: [.new], context: nil)
 
         // Add runtime error handling notifications
         NotificationCenter.default.addObserver(
@@ -253,6 +434,23 @@ extension VideoPlayerViewController {
             selector: #selector(playerItemDidPlayToEndTime),
             name: .AVPlayerItemDidPlayToEndTime,
             object: playerItem
+        )
+
+        // Add audio session notifications. Scoped to the shared session object, mirroring the way
+        // the player-item notifications above are scoped to `playerItem`. Registered above the
+        // live-content guard because interruptions and route changes apply to live streams too.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioSessionInterruption),
+            name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioSessionRouteChange),
+            name: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance()
         )
 
         guard let isLiveContent = viewModel.isLiveContent, !isLiveContent else { return }
@@ -283,13 +481,20 @@ extension VideoPlayerViewController {
     /// `AVPlayerItem`s are not deallocated while KVO observers are still registered.
     /// Mirrors `addObservers()`: the per-notification `object:` and the live-content guard match
     /// exactly what was registered. The app-lifecycle observer is intentionally NOT removed here
-    /// (it is owned for the controller's lifetime and torn down in `deinit`).
+    /// (it is owned for the controller's lifetime and torn down in `deinit`); the audio session
+    /// observers ARE, because `addObservers()` registers them and `setupPlayer()` re-runs on every
+    /// video switch — leaving them in place would register a second copy each time.
     private func removeObservers() {
         playerItem?.removeObserver(self, forKeyPath: "status")
+        playerItem?.removeObserver(self, forKeyPath: "playbackLikelyToKeepUp")
+        playerItem?.removeObserver(self, forKeyPath: "playbackBufferEmpty")
 
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemFailedToPlayToEndTime, object: playerItem)
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemPlaybackStalled, object: playerItem)
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: playerItem)
+
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance())
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: AVAudioSession.sharedInstance())
 
         guard let isLiveContent = viewModel.isLiveContent, !isLiveContent else { return }
         if let periodicTimeObserver = periodicTimeObserver {
@@ -300,6 +505,21 @@ extension VideoPlayerViewController {
     }
 
     public override func observeValue(forKeyPath keyPath: String?, of _: Any?, change _: [NSKeyValueChangeKey: Any]?, context _: UnsafeMutableRawPointer?) {
+        // AVFoundation delivers KVO on whichever thread it happens to be using — for HLS these
+        // callbacks routinely arrive off the main thread — and every branch below touches UIKit
+        // (adds subviews, installs SnapKit constraints, drives the activity indicator).
+        runOnMainThread { [weak self] in
+            guard let self = self else { return }
+            self.handleObservedValueChange(forKeyPath: keyPath)
+        }
+    }
+
+    /// Main-thread body of `observeValue(forKeyPath:of:change:context:)`.
+    ///
+    /// State is re-read from `player?.currentItem` rather than from the KVO `change` dictionary so
+    /// that a callback which was queued onto the main thread always acts on the item's *current*
+    /// state, never on a value that has since been superseded.
+    private func handleObservedValueChange(forKeyPath keyPath: String?) {
         switch keyPath {
         case "duration":
             if let duration = player?.currentItem?.duration, duration.seconds > 0.0, !didSetupControls {
@@ -324,11 +544,37 @@ extension VideoPlayerViewController {
             default:
                 break
             }
+        case "playbackLikelyToKeepUp", "playbackBufferEmpty":
+            handlePlaybackBufferingChange()
         default:
             break
         }
     }
-    
+
+    /// Drives the loader for mid-playback buffering, and — crucially — turns it back off.
+    ///
+    /// `playerItemPlaybackStalled` starts the indicator and kills the controls auto-hide timer, but
+    /// the stall notification has no counterpart for "playback recovered". Without this the
+    /// indicator stayed up forever after the first stall, because the only `stopAnimating()` calls
+    /// on the initial-load path are gated behind `!didSetupControls`.
+    private func handlePlaybackBufferingChange() {
+        // Before the controls exist, the "status"/"duration" path owns the loader (it is showing the
+        // initial load, not a stall). Taking over here would hide it while the video is still blank.
+        guard didSetupControls, let currentItem = player?.currentItem else { return }
+
+        if currentItem.isPlaybackLikelyToKeepUp {
+            activityIndicatorView.stopAnimating()
+            // The stall handler invalidated the auto-hide timer to keep the controls on screen while
+            // buffering. Restore it, otherwise the controls stay up for the rest of the session.
+            resetControlsHiddenTimer()
+        } else if currentItem.isPlaybackBufferEmpty {
+            // The buffer drained mid-playback. `.AVPlayerItemPlaybackStalled` normally covers this,
+            // but it is not posted in every configuration, so mirror its UI here as well.
+            activityIndicatorView.startAnimating()
+            invalidateControlsHiddenTimer()
+        }
+    }
+
     private func enableControls() {
         if let isLiveContent = viewModel.isLiveContent, isLiveContent {
             setupLiveControls()
@@ -404,6 +650,10 @@ extension VideoPlayerViewController {
         removeObservers()
         player?.replaceCurrentItem(with: nil)
         playerItem = nil
+        // Detach before dropping the reference. An AVPlayerLayer retains its AVPlayer, so nilling
+        // the property alone leaves the layer in `view.layer`'s sublayers keeping the old player
+        // alive — every video switch would stack another layer and another AVPlayer.
+        playerLayer?.removeFromSuperlayer()
         playerLayer = nil
         viewModel.playerState = .pause
     }
