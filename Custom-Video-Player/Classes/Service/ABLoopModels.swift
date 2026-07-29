@@ -3,11 +3,11 @@ import AVFoundation
 
 /// Represents a precise time point in a video with frame-level accuracy
 public struct TimePoint: Codable, Equatable {
-    let hours: Int
-    let minutes: Int
-    let seconds: Int
-    let frames: Int
-    let frameRate: Double
+    public let hours: Int
+    public let minutes: Int
+    public let seconds: Int
+    public let frames: Int
+    public let frameRate: Double
 
     /// Initializes a TimePoint with individual components
     ///
@@ -85,9 +85,9 @@ public struct TimePoint: Codable, Equatable {
 /// Represents a single A-B loop point
 public struct ABLoop: Codable, Equatable, Identifiable {
     public let id: UUID
-    let pointA: TimePoint
-    let pointB: TimePoint
-    let name: String?
+    public let pointA: TimePoint
+    public let pointB: TimePoint
+    public let name: String?
 
     /// Initializes an ABLoop
     ///
@@ -126,10 +126,10 @@ public struct ABLoop: Codable, Equatable, Identifiable {
 /// Represents a segment in a segment playlist
 public struct PlaybackSegment: Codable, Equatable, Identifiable {
     public let id: UUID
-    let startPoint: TimePoint
-    let endPoint: TimePoint
-    let order: Int
-    let name: String?
+    public let startPoint: TimePoint
+    public let endPoint: TimePoint
+    public let order: Int
+    public let name: String?
 
     /// Initializes a PlaybackSegment
     ///
@@ -151,10 +151,10 @@ public struct PlaybackSegment: Codable, Equatable, Identifiable {
 /// Represents a playlist of segments for sequential playback
 public struct SegmentPlaylist: Codable, Equatable, Identifiable {
     public let id: UUID
-    let name: String
-    var segments: [PlaybackSegment]
-    let videoIdentifier: String // URL or unique identifier of the video
-    var isLooping: Bool // Whether to loop the entire segment playlist
+    public let name: String
+    public var segments: [PlaybackSegment]
+    public let videoIdentifier: String // URL or unique identifier of the video
+    public var isLooping: Bool // Whether to loop the entire segment playlist
 
     /// Initializes a SegmentPlaylist
     ///
@@ -206,9 +206,9 @@ public struct SegmentPlaylist: Codable, Equatable, Identifiable {
 
 /// Container for all A-B loops associated with a video
 public struct VideoLoopData: Codable {
-    let videoIdentifier: String
-    var abLoops: [ABLoop]
-    var segmentPlaylists: [SegmentPlaylist]
+    public let videoIdentifier: String
+    public var abLoops: [ABLoop]
+    public var segmentPlaylists: [SegmentPlaylist]
 
     /// Initializes VideoLoopData
     ///

@@ -1,6 +1,6 @@
 /// A struct representing the configuration for the video player.
 public struct VideoPlayerConfig {
-    var playlist: VideoPlaylist
+    public var playlist: VideoPlaylist
     
     /// Initializes a `VideoPlayerConfig` with the specified playlist.
     ///
@@ -12,9 +12,9 @@ public struct VideoPlayerConfig {
 
 /// A struct representing a video playlist.
 public struct VideoPlaylist {
-    let title: String
-    var currentVideoIndex: Int?
-    let videos: [Video]?
+    public let title: String
+    public var currentVideoIndex: Int?
+    public let videos: [Video]?
     
     /// Initializes a `VideoPlaylist` with the specified title, current video index, and videos.
     ///
@@ -31,9 +31,9 @@ public struct VideoPlaylist {
 
 /// A struct representing a video.
 public struct Video {
-    let url: String?
-    let title: String?
-    let isLiveContent: Bool?
+    public let url: String?
+    public let title: String?
+    public let isLiveContent: Bool?
     
     /// Initializes a `Video` with the specified URL, title, and whether it is live content.
     ///
