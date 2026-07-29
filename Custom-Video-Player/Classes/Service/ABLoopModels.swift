@@ -3,11 +3,11 @@ import AVFoundation
 
 /// Represents a precise time point in a video with frame-level accuracy
 public struct TimePoint: Codable, Equatable {
-    let hours: Int
-    let minutes: Int
-    let seconds: Int
-    let frames: Int
-    let frameRate: Double
+    public let hours: Int
+    public let minutes: Int
+    public let seconds: Int
+    public let frames: Int
+    public let frameRate: Double
 
     /// Initializes a TimePoint with individual components
     ///
@@ -85,9 +85,24 @@ public struct TimePoint: Codable, Equatable {
 /// Represents a single A-B loop point
 public struct ABLoop: Codable, Equatable, Identifiable {
     public let id: UUID
-    let pointA: TimePoint
-    let pointB: TimePoint
-    let name: String?
+    public let pointA: TimePoint
+    public let pointB: TimePoint
+    public let name: String?
+
+    /// Identifier of the video this loop was created for.
+    ///
+    /// Deliberately optional and defaulted, for two reasons that both have to hold:
+    ///
+    /// 1. Loops written by earlier versions have no such key in their stored JSON.
+    ///    `init(from:)` decodes it with `decodeIfPresent`, so an old archive still loads
+    ///    (as `nil`) instead of failing and taking every saved loop down with it.
+    /// 2. Every existing `ABLoop(pointA:pointB:name:)` call site keeps compiling, because
+    ///    the parameter is last and defaulted.
+    ///
+    /// `ABLoopManager` uses it to scope `clearLoopData(for:)` to the video being cleared;
+    /// see `loopBelongsLocked(_:to:removedData:)` for how loops that predate the property
+    /// are attributed.
+    public let videoIdentifier: String?
 
     /// Initializes an ABLoop
     ///
@@ -96,11 +111,45 @@ public struct ABLoop: Codable, Equatable, Identifiable {
     ///   - pointA: Start point of the loop
     ///   - pointB: End point of the loop
     ///   - name: Optional name for the loop
-    public init(id: UUID = UUID(), pointA: TimePoint, pointB: TimePoint, name: String? = nil) {
+    ///   - videoIdentifier: Identifier of the video this loop belongs to, when known
+    public init(
+        id: UUID = UUID(),
+        pointA: TimePoint,
+        pointB: TimePoint,
+        name: String? = nil,
+        videoIdentifier: String? = nil
+    ) {
         self.id = id
         self.pointA = pointA
         self.pointB = pointB
         self.name = name
+        self.videoIdentifier = videoIdentifier
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case pointA
+        case pointB
+        case name
+        case videoIdentifier
+    }
+
+    /// Decodes an `ABLoop`, tolerating archives written before `videoIdentifier` existed.
+    ///
+    /// Written out by hand rather than left to the compiler so the compatibility contract
+    /// is explicit: `videoIdentifier` must stay optional-with-fallback here, because the
+    /// alternative is a decode failure that quarantines — and therefore hides — every loop
+    /// a user has ever saved.
+    ///
+    /// - Parameter decoder: Decoder to read from
+    /// - Throws: `DecodingError` if a required property is missing or malformed
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        pointA = try container.decode(TimePoint.self, forKey: .pointA)
+        pointB = try container.decode(TimePoint.self, forKey: .pointB)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        videoIdentifier = try container.decodeIfPresent(String.self, forKey: .videoIdentifier)
     }
 
     /// Returns the duration of the loop
@@ -126,10 +175,10 @@ public struct ABLoop: Codable, Equatable, Identifiable {
 /// Represents a segment in a segment playlist
 public struct PlaybackSegment: Codable, Equatable, Identifiable {
     public let id: UUID
-    let startPoint: TimePoint
-    let endPoint: TimePoint
-    let order: Int
-    let name: String?
+    public let startPoint: TimePoint
+    public let endPoint: TimePoint
+    public let order: Int
+    public let name: String?
 
     /// Initializes a PlaybackSegment
     ///
@@ -151,10 +200,10 @@ public struct PlaybackSegment: Codable, Equatable, Identifiable {
 /// Represents a playlist of segments for sequential playback
 public struct SegmentPlaylist: Codable, Equatable, Identifiable {
     public let id: UUID
-    let name: String
-    var segments: [PlaybackSegment]
-    let videoIdentifier: String // URL or unique identifier of the video
-    var isLooping: Bool // Whether to loop the entire segment playlist
+    public let name: String
+    public var segments: [PlaybackSegment]
+    public let videoIdentifier: String // URL or unique identifier of the video
+    public var isLooping: Bool // Whether to loop the entire segment playlist
 
     /// Initializes a SegmentPlaylist
     ///
@@ -206,9 +255,9 @@ public struct SegmentPlaylist: Codable, Equatable, Identifiable {
 
 /// Container for all A-B loops associated with a video
 public struct VideoLoopData: Codable {
-    let videoIdentifier: String
-    var abLoops: [ABLoop]
-    var segmentPlaylists: [SegmentPlaylist]
+    public let videoIdentifier: String
+    public var abLoops: [ABLoop]
+    public var segmentPlaylists: [SegmentPlaylist]
 
     /// Initializes VideoLoopData
     ///

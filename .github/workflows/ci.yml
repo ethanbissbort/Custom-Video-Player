@@ -45,6 +45,33 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
 
+      # Resolve a concrete simulator rather than hardcoding a device name, so the job
+      # keeps working when the runner image ships a different iPhone generation.
+      - name: Select an iOS Simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          runtimes = json.load(sys.stdin)['devices']
+          for runtime, devices in sorted(runtimes.items(), reverse=True):
+              if 'iOS' not in runtime:
+                  continue
+              for device in devices:
+                  if device.get('isAvailable') and 'iPhone' in device['name']:
+                      print(device['udid'])
+                      sys.exit(0)
+          sys.exit('No available iPhone simulator found')
+          ")
+          echo "Using simulator $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: |
+          xcodebuild test \
+            -scheme CustomVideoPlayer \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO
+
   example:
     name: Build Example (CocoaPods)
     runs-on: macos-15

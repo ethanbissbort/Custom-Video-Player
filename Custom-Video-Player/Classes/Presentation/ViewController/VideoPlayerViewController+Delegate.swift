@@ -96,6 +96,9 @@ extension VideoPlayerViewController: PlayerControlsViewDelegate {
             player.seek(to: seekingCM)
             /// Retain video player state on seeking: whenever the user interacts with the seek bar, we pause the player internally to calculate the new time. So, once the seek bar action is completed, we would need to retain the original playback state of the player.
             viewModel.playerState == .play ? player.play() : player.pause()
+            // `play()` always resumes at 1.0, so the user's selected speed has to be restored.
+            // No-op when the branch above paused instead.
+            applySelectedPlaybackRate()
         default:
             break
         }
@@ -126,6 +129,29 @@ extension VideoPlayerViewController: PlayerControlsViewDelegate {
         )
         abLoopVC.delegate = self
         coordinator.navigationController.presentedViewController?.present(abLoopVC, animated: true)
+    }
+
+    /// Applies a rate the user picked with the speed control.
+    ///
+    /// Note what this deliberately does *not* do: it never calls `play()`, and `setPlaybackRate`
+    /// never writes `AVPlayer.rate` while paused. Picking "1.5x" on a paused video changes the
+    /// speed of the *next* playback, it does not start playing.
+    ///
+    /// - Parameter rate: The newly selected playback rate.
+    func didChangePlaybackSpeed(to rate: Float) {
+        setPlaybackRate(rate)
+        resetControlsHiddenTimer()
+    }
+
+    /// Enters Picture-in-Picture, or leaves it when it is already running.
+    func togglePictureInPicture() {
+        guard let pictureInPictureController = pictureInPictureController else { return }
+        if pictureInPictureController.isPictureInPictureActive {
+            pictureInPictureController.stopPictureInPicture()
+        } else {
+            pictureInPictureController.startPictureInPicture()
+        }
+        resetControlsHiddenTimer()
     }
 }
 

@@ -1,3 +1,24 @@
+> # ⚠️ SUPERSEDED — HISTORICAL DOCUMENT
+>
+> **This report is out of date and is retained only as a record of the 2025-12-05
+> audit. Do not treat any statement below as describing the current codebase.**
+>
+> Known inaccuracies as of **2026-07-29**:
+>
+> - The headline "CRITICAL BUG: Missing Font Method" was fixed long ago;
+>   `FontUtility.helveticaNeueBold(ofSize:)` exists.
+> - The report calls the A-B loop system "complete and well-structured". It was
+>   not. The feature never activated at all — selecting a loop immediately
+>   deactivated it — and that was only found and fixed in 2.0.0.
+> - It does not cover the crash risks, observer leak, dead rewind button, CRLF
+>   manifest parsing, or SwiftPM resource fixes made since, nor the
+>   iOS 11 → iOS 18 deployment-target change.
+>
+> **For the current state of this project, see
+> [CHANGELOG.md](CHANGELOG.md).**
+
+---
+
 # Custom Video Player - Complete Code Audit Report
 **Date:** 2025-12-05
 **Auditor:** Claude AI Assistant

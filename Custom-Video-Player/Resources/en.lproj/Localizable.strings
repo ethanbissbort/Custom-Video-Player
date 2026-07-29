@@ -1,0 +1,147 @@
+/*
+  Localizable.strings
+  CustomVideoPlayer
+
+  English (base) strings for the video player UI.
+
+  Keys are namespaced by area: "player.*" for transport controls, "subtitles.*" and
+  "quality.*" for the selection sheets, "abloop.*" for the A-B loop and segment playlist
+  flows, and "error.*" for playback failure messages.
+
+  Accessibility strings live alongside their visible counterparts with an
+  ".accessibility" suffix, because a VoiceOver label often needs to be more explicit than
+  the icon or abbreviation it describes.
+*/
+
+/* ---------------------------------------------------------------- Playback errors */
+
+"error.title" = "Something went wrong. Please try again!";
+"error.network" = "Please check your internet connection and try again.";
+"error.playback" = "This video could not be played.";
+"error.back" = "Back";
+
+/* Shown when playback stops short of the end without reporting a load failure. */
+"error.interrupted" = "Playback was interrupted. Please try again.";
+
+/* ---------------------------------------------------------------- Transport controls */
+
+"player.live" = "LIVE";
+"player.abLoop" = "A-B";
+
+"player.play.accessibility" = "Play";
+"player.pause.accessibility" = "Pause";
+"player.back.accessibility" = "Back";
+"player.seekForward.accessibility" = "Skip forward 15 seconds";
+"player.seekBackward.accessibility" = "Skip back 15 seconds";
+"player.previousVideo.accessibility" = "Previous video";
+"player.nextVideo.accessibility" = "Next video";
+"player.subtitles.accessibility" = "Subtitles";
+"player.settings.accessibility" = "Video quality";
+"player.abLoop.accessibility" = "A-B loop";
+"player.pictureInPicture.accessibility" = "Picture in Picture";
+"player.airPlay.accessibility" = "AirPlay";
+"player.seekBar.accessibility" = "Playback position";
+"player.seekToLive.accessibility" = "Jump to live";
+
+/* Playback speed. %@ is a multiplier such as "1.5x". */
+"player.speed.accessibility" = "Playback speed";
+"player.speed.value.accessibility" = "%@ speed";
+
+/* ---------------------------------------------------------------- Selection sheets */
+
+"subtitles.title" = "Subtitle";
+"subtitles.off" = "Off";
+"quality.title" = "Qualities";
+"quality.auto" = "Auto";
+"selection.selected.accessibility" = "Selected";
+
+/* Row title for a track that carries subtitles for the deaf and hard of hearing.
+   %@ is the track's own display name, e.g. "English". */
+"subtitles.sdh" = "%@ (SDH)";
+
+"subtitles.list.accessibility" = "Subtitle tracks";
+"quality.list.accessibility" = "Video qualities";
+
+/* ---------------------------------------------------------------- A-B loop */
+
+"abloop.title" = "A-B Loops";
+"abloop.segment.title" = "Segment Playlists";
+"abloop.create" = "Create New A-B Loop";
+"abloop.createSegmentPlaylist" = "Create Segment Playlist";
+"abloop.stopLoop" = "Stop Loop";
+"abloop.pointA" = "Point A";
+"abloop.pointB" = "Point B";
+"abloop.setToCurrentTime" = "Set to Current Time";
+"abloop.namePlaceholder" = "Loop name (optional)";
+"abloop.save" = "Save";
+"abloop.cancel" = "Cancel";
+"abloop.delete" = "Delete";
+"abloop.timecodeFormat" = "HH:MM:SS:FF";
+
+"abloop.active.accessibility" = "Active";
+"abloop.timecodeField.accessibility" = "Timecode, hours minutes seconds frames";
+
+"abloop.panel.title" = "A-B Loop & Segments";
+"abloop.createTitle" = "Create A-B Loop";
+"abloop.createLoop" = "Create Loop";
+"abloop.nameLabel" = "Loop Name (optional)";
+
+"abloop.close.accessibility" = "Close";
+"abloop.mode.accessibility" = "List to show";
+"abloop.list.accessibility" = "Saved A-B loops";
+"abloop.segmentList.accessibility" = "Saved segment playlists";
+"abloop.setPointA.accessibility" = "Set point A to the current playback time";
+"abloop.setPointB.accessibility" = "Set point B to the current playback time";
+
+/* ---------------------------------------------------------------- Segment playlists */
+
+"segment.name" = "Playlist name";
+"segment.loopPlaylist" = "Loop playlist";
+"segment.addSegment" = "Add Segment";
+"segment.start" = "Start";
+"segment.end" = "End";
+"segment.empty" = "No segments yet. Add a start and end point above.";
+
+/* Segment row title. %d is the 1-based position in the playlist. */
+"segment.rowTitle" = "Segment %d";
+
+"segment.createTitle" = "Create Segment Playlist";
+"segment.nameLabel" = "Playlist Name (optional)";
+"segment.header" = "Segments";
+"segment.save" = "Save Playlist";
+"segment.defaultName" = "Segment Playlist";
+
+"segment.list.accessibility" = "Segments in this playlist";
+"segment.setStart.accessibility" = "Set the segment start to the current playback time";
+"segment.setEnd.accessibility" = "Set the segment end to the current playback time";
+
+/* Announced after a segment is appended. %d is the new segment's 1-based position. */
+"segment.added.accessibility" = "Segment %d added";
+
+/* ---------------------------------------------------------------- Validation */
+
+"validation.invalidTitle" = "Invalid Input";
+"validation.invalidTimecodes" = "Please enter valid timecodes.";
+"validation.invalidRangeTitle" = "Invalid Range";
+"validation.invalidRange" = "Point B must come after point A.";
+"validation.beyondDuration" = "That time is beyond the end of this video.";
+"validation.emptyPlaylist" = "Add at least one segment before saving.";
+"validation.ok" = "OK";
+"validation.beyondDurationTitle" = "Beyond Video End";
+"validation.invalidPlaylistTitle" = "Invalid Playlist";
+
+/* ---------------------------------------------------------------- Seek bar position */
+
+/* Spoken seek-bar position, replacing the "47 percent" a bare slider would announce.
+   %1$@ is the elapsed time and %2$@ the total duration, both already spelled out in words
+   ("1 minute, 5 seconds"). */
+"player.seekBar.value.accessibility" = "%1$@ of %2$@";
+
+/* ---------------------------------------------------------------- Timecode fields */
+
+/* The four timecode fields look identical to VoiceOver, so each names its own unit; the
+   ":" separators and the "HH:MM:SS:FF" hint are visual only. */
+"abloop.hours.accessibility" = "Hours";
+"abloop.minutes.accessibility" = "Minutes";
+"abloop.seconds.accessibility" = "Seconds";
+"abloop.frames.accessibility" = "Frames";

@@ -2,8 +2,11 @@ import Foundation
 import UIKit
 
 /// Extension to UIView providing a method to round specific corners of the view.
-public extension UIView {
-    
+///
+/// Deliberately `internal`: a `public extension UIView` injects this method into every view of
+/// every app that links the library, which is not part of the player's contract.
+extension UIView {
+
     /// Rounds the specified corners of the view with a given radius.
     ///
     /// - Parameters:

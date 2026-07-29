@@ -36,10 +36,22 @@ class SubtitleSelectionViewController: UIViewController {
     }
     
     /// Header label for the subtitle selection view.
+    ///
+    /// Scaled with `UIFontMetrics` and capped, because the sheet's height is fixed: the title has
+    /// to grow with the user's Dynamic Type setting without pushing the table off the card.
     private let header = UILabel().configure {
         $0.textColor = VideoPlayerColor(palette: .pearlWhite).uiColor
-        $0.text = "Subtitle"
-        $0.font = FontUtility.helveticaNeueMedium(ofSize: 16)
+        $0.text = CVPLocalized(
+            "subtitles.title",
+            value: "Subtitle",
+            comment: "Title of the subtitle selection sheet"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueMedium(ofSize: 16),
+            maximumPointSize: 24
+        )
+        $0.adjustsFontForContentSizeCategory = true
+        $0.accessibilityTraits = .header
     }
     
     // MARK: - Properties
@@ -68,11 +80,19 @@ class SubtitleSelectionViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
+        setupAccessibility()
         modalPresentationStyle = .popover
     }
-    
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // The sheet covers the player, so VoiceOver has to be moved into it explicitly; without
+        // this, focus stays on the (now obscured) subtitles button.
+        UIAccessibility.post(notification: .screenChanged, argument: header)
+    }
+
     // MARK: - View Setup
-    
+
     /// Sets up the main view and its subviews.
     private func setupView() {
         view.addSubview(popOverView)
@@ -135,12 +155,51 @@ class SubtitleSelectionViewController: UIViewController {
         }
     }
     
+    /// Wires up the accessibility affordances the sheet's visual design implies but does not
+    /// expose: the card is modal, the grabber is decorative, and the only way out is a tap on the
+    /// dimmed area or a swipe down — neither of which a VoiceOver user can perform.
+    private func setupAccessibility() {
+        popOverView.accessibilityViewIsModal = true
+        grabberView.isAccessibilityElement = false
+        grabberView.accessibilityElementsHidden = true
+        tableView.accessibilityLabel = CVPLocalized(
+            "subtitles.list.accessibility",
+            value: "Subtitle tracks",
+            comment: "VoiceOver label for the list of subtitle tracks"
+        )
+    }
+
     // MARK: - Actions
-    
+
     /// Dismisses the subtitle selection view.
     @objc private func dismissView() {
-        dismiss(animated: true)
+        // Reduce Motion asks for the transition itself to go away, not merely to be shortened.
+        dismiss(animated: !UIAccessibility.isReduceMotionEnabled)
         delegate?.onDismissed()
+    }
+
+    /// Makes the VoiceOver escape gesture (a two-finger Z) close the sheet.
+    ///
+    /// The tap-to-dismiss overlay and the swipe-down gesture are both unreachable with VoiceOver
+    /// on, so without this the sheet can only be left by picking a track.
+    override func accessibilityPerformEscape() -> Bool {
+        dismissView()
+        return true
+    }
+
+    // MARK: - External Selection
+
+    /// Moves the sheet's selection onto a track chosen outside it.
+    ///
+    /// Called by the player when closed captioning is enabled system-wide and a legible track was
+    /// selected automatically, so opening the sheet shows what is actually playing.
+    ///
+    /// - Parameter option: The selected track, or `nil` for "Off".
+    func selectTrack(_ option: AVMediaSelectionOption?) {
+        viewModel.selectTrack(option)
+        // Safe before the view loads: the table view is a stored property, so this neither forces
+        // a view hierarchy into existence nor requires a window.
+        tableView.reloadData()
     }
 }
 

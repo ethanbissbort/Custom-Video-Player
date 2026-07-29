@@ -28,12 +28,29 @@ class TimecodeInputView: UIView {
 
     private let separator3 = TimecodeInputView.makeSeparatorLabel()
 
+    /// The row of fields and separators.
+    ///
+    /// Held as a property rather than built locally so its layout direction can be pinned: a
+    /// timecode reads hours-first left-to-right in every locale, the same way a clock face does.
+    private let fieldsStackView = UIStackView().configure {
+        $0.axis = .horizontal
+        $0.spacing = CGFloat.space8
+        $0.alignment = .center
+        $0.distribution = .fillEqually
+        $0.semanticContentAttribute = .forceLeftToRight
+    }
+
+    /// The smallest hit area the HIG allows for a control, in points.
+    private static let minimumTouchTarget: CGFloat = 44
+
     /// Creates a numeric text field styled for a timecode component.
     private static func makeTimeTextField() -> UITextField {
         UITextField().configure {
             $0.keyboardType = .numberPad
             $0.textAlignment = .center
-            $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+            $0.font = UIFontMetrics(forTextStyle: .body)
+                .scaledFont(for: FontUtility.helveticaNeueRegular(ofSize: 16))
+            $0.adjustsFontForContentSizeCategory = true
             $0.textColor = VideoPlayerColor(palette: .white).uiColor
             $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.3)
             $0.layer.cornerRadius = 4
@@ -42,20 +59,34 @@ class TimecodeInputView: UIView {
     }
 
     /// Creates a ":" separator label used between timecode components.
+    ///
+    /// Hidden from assistive technology: read out one at a time the colons are noise, and each
+    /// field names the unit it holds.
     private static func makeSeparatorLabel() -> UILabel {
         UILabel().configure {
             $0.text = ":"
-            $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
+            $0.font = UIFontMetrics(forTextStyle: .body)
+                .scaledFont(for: FontUtility.helveticaNeueBold(ofSize: 16))
+            $0.adjustsFontForContentSizeCategory = true
             $0.textColor = VideoPlayerColor(palette: .white).uiColor
             $0.textAlignment = .center
+            $0.isAccessibilityElement = false
         }
     }
 
+    /// The "HH:MM:SS:FF" hint under the fields. Purely visual — see `makeSeparatorLabel()`.
     private let formatLabel = UILabel().configure {
-        $0.text = "HH:MM:SS:FF"
-        $0.font = FontUtility.helveticaNeueLight(ofSize: 12)
+        $0.text = CVPLocalized(
+            "abloop.timecodeFormat",
+            value: "HH:MM:SS:FF",
+            comment: "Placeholder showing the order of the timecode fields: hours, minutes, seconds, frames."
+        )
+        $0.font = UIFontMetrics(forTextStyle: .caption1)
+            .scaledFont(for: FontUtility.helveticaNeueLight(ofSize: 12))
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .pearlWhite).uiColor
         $0.textAlignment = .center
+        $0.isAccessibilityElement = false
     }
 
     // MARK: - Initialization
@@ -65,51 +96,78 @@ class TimecodeInputView: UIView {
         super.init(frame: .zero)
         setupViews()
         setupDelegates()
+        setUpAccessibility()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupViews()
         setupDelegates()
+        setUpAccessibility()
     }
 
     // MARK: - Setup
 
     private func setupViews() {
-        let stackView = UIStackView().configure {
-            $0.axis = .horizontal
-            $0.spacing = 8
-            $0.alignment = .center
-            $0.distribution = .fillEqually
-        }
-
-        addSubview(stackView)
+        addSubview(fieldsStackView)
         addSubview(formatLabel)
 
-        stackView.addArrangedSubview(hoursTextField)
-        stackView.addArrangedSubview(separator1)
-        stackView.addArrangedSubview(minutesTextField)
-        stackView.addArrangedSubview(separator2)
-        stackView.addArrangedSubview(secondsTextField)
-        stackView.addArrangedSubview(separator3)
-        stackView.addArrangedSubview(framesTextField)
+        fieldsStackView.addArrangedSubview(hoursTextField)
+        fieldsStackView.addArrangedSubview(separator1)
+        fieldsStackView.addArrangedSubview(minutesTextField)
+        fieldsStackView.addArrangedSubview(separator2)
+        fieldsStackView.addArrangedSubview(secondsTextField)
+        fieldsStackView.addArrangedSubview(separator3)
+        fieldsStackView.addArrangedSubview(framesTextField)
 
-        stackView.snp.makeConstraints { make in
+        fieldsStackView.snp.makeConstraints { make in
             make.top.leading.trailing.equalToSuperview()
-            make.height.equalTo(40)
+            // A minimum rather than a fixed height: the fields are the row's touch targets, and
+            // text scaled up for Dynamic Type has to be able to grow the row instead of clipping.
+            make.height.greaterThanOrEqualTo(TimecodeInputView.minimumTouchTarget)
         }
 
         formatLabel.snp.makeConstraints { make in
-            make.top.equalTo(stackView.snp.bottom).offset(4)
+            make.top.equalTo(fieldsStackView.snp.bottom).offset(CGFloat.space4)
             make.centerX.equalToSuperview()
             make.bottom.equalToSuperview()
         }
 
         [hoursTextField, minutesTextField, secondsTextField, framesTextField].forEach { textField in
             textField.snp.makeConstraints { make in
-                make.width.equalTo(50)
+                make.width.greaterThanOrEqualTo(50)
             }
         }
+    }
+
+    // MARK: - Accessibility
+
+    /// Names each timecode field for VoiceOver.
+    ///
+    /// Four adjacent, identically styled "00" fields are indistinguishable to a VoiceOver user:
+    /// the ":" separators and the "HH:MM:SS:FF" hint that tell a sighted user which is which are
+    /// purely visual, so each field has to name its own unit. The row is marked as a semantic
+    /// group so entering it announces what the fields together represent.
+    private func setUpAccessibility() {
+        fieldsStackView.accessibilityContainerType = .semanticGroup
+        fieldsStackView.accessibilityLabel = CVPLocalized(
+            "abloop.timecodeField.accessibility",
+            value: "Timecode, hours minutes seconds frames",
+            comment: "VoiceOver label for the timecode entry row as a whole."
+        )
+
+        hoursTextField.accessibilityLabel = CVPLocalized(
+            "abloop.hours.accessibility", value: "Hours", comment: "VoiceOver label for the hours field of a timecode."
+        )
+        minutesTextField.accessibilityLabel = CVPLocalized(
+            "abloop.minutes.accessibility", value: "Minutes", comment: "VoiceOver label for the minutes field of a timecode."
+        )
+        secondsTextField.accessibilityLabel = CVPLocalized(
+            "abloop.seconds.accessibility", value: "Seconds", comment: "VoiceOver label for the seconds field of a timecode."
+        )
+        framesTextField.accessibilityLabel = CVPLocalized(
+            "abloop.frames.accessibility", value: "Frames", comment: "VoiceOver label for the frames field of a timecode."
+        )
     }
 
     private func setupDelegates() {

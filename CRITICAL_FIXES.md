@@ -1,3 +1,19 @@
+> # ⚠️ SUPERSEDED — HISTORICAL DOCUMENT
+>
+> **This document is out of date and is retained only as a record of the
+> 2025-12-05 audit follow-up. Do not treat it as a current to-do list.**
+>
+> As of **2026-07-29** the items below are resolved, and the document omits the
+> larger problems found afterwards — most notably that the A-B loop feature
+> never activated at all, plus several crash risks, an observer leak, a dead
+> rewind button, CRLF manifest parsing, an invalid SwiftPM resource glob, and
+> the breaking iOS 11 → iOS 18 deployment-target change.
+>
+> **For the current state of this project, see
+> [CHANGELOG.md](CHANGELOG.md).**
+
+---
+
 # Critical Fixes Required
 
 This document outlines the critical issues found during the code audit that must be addressed immediately.

@@ -33,10 +33,21 @@ class QualitySelectionViewController: UIViewController {
         $0.layer.cornerRadius = CGFloat.space6 / 2
     }
     
+    /// Scaled with `UIFontMetrics` and capped: the sheet's height is fixed, so the title has to
+    /// follow the user's Dynamic Type setting without pushing the table off the card.
     private let header = UILabel().configure {
         $0.textColor = VideoPlayerColor(palette: .pearlWhite).uiColor
-        $0.text = "Qualities"
-        $0.font = FontUtility.helveticaNeueMedium(ofSize: 16)
+        $0.text = CVPLocalized(
+            "quality.title",
+            value: "Qualities",
+            comment: "Title of the video quality selection sheet"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueMedium(ofSize: 16),
+            maximumPointSize: 24
+        )
+        $0.adjustsFontForContentSizeCategory = true
+        $0.accessibilityTraits = .header
     }
     
     weak var delegate: QualitySelectionDelegate?
@@ -50,9 +61,17 @@ class QualitySelectionViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
+        setupAccessibility()
         modalPresentationStyle = .popover
     }
-    
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // The sheet covers the player, so VoiceOver has to be moved into it explicitly; without
+        // this, focus stays on the (now obscured) settings button.
+        UIAccessibility.post(notification: .screenChanged, argument: header)
+    }
+
     /// Intentionally empty. The host app detects landscape-capable controllers via
     /// `responds(to: Selector("shouldForceLandscape"))` (see the Example AppDelegate), so this
     /// method's mere presence is what matters — do not remove it.
@@ -121,9 +140,33 @@ class QualitySelectionViewController: UIViewController {
         }
     }
     
+    /// Wires up the accessibility affordances the sheet's visual design implies but does not
+    /// expose: the card is modal, the grabber is decorative, and the only way out is a tap on the
+    /// dimmed area or a swipe down — neither of which a VoiceOver user can perform.
+    private func setupAccessibility() {
+        popOverView.accessibilityViewIsModal = true
+        grabberView.isAccessibilityElement = false
+        grabberView.accessibilityElementsHidden = true
+        tableView.accessibilityLabel = CVPLocalized(
+            "quality.list.accessibility",
+            value: "Video qualities",
+            comment: "VoiceOver label for the list of video qualities"
+        )
+    }
+
     @objc private func dismissView() {
-        dismiss(animated: true)
+        // Reduce Motion asks for the transition itself to go away, not merely to be shortened.
+        dismiss(animated: !UIAccessibility.isReduceMotionEnabled)
         delegate?.onDismissed()
+    }
+
+    /// Makes the VoiceOver escape gesture (a two-finger Z) close the sheet.
+    ///
+    /// The tap-to-dismiss overlay and the swipe-down gesture are both unreachable with VoiceOver
+    /// on, so without this the sheet can only be left by picking a quality.
+    override func accessibilityPerformEscape() -> Bool {
+        dismissView()
+        return true
     }
 }
 
