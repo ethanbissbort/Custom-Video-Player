@@ -21,6 +21,18 @@ A feature-rich video player with custom playback controls, subtitle and video qu
 
 ## Installation
 
+> **This is a maintained fork** of
+> [ajkmr7/Custom-Video-Player](https://github.com/ajkmr7/Custom-Video-Player).
+> The snippets below install from this fork
+> (`ethanbissbort/Custom-Video-Player`) at version **2.0.0**. See
+> [CHANGELOG.md](CHANGELOG.md) for what changed — note that 2.0.0 raises the
+> minimum deployment target to iOS 18.0, a breaking change from upstream 1.1.0.
+>
+> **A `2.0.0` tag must exist in this repository before these snippets will
+> resolve.** The repository currently has no tags, so both CocoaPods and Swift
+> Package Manager will fail to resolve the dependency until the release is
+> tagged.
+
 ### CocoaPods
 
 [CocoaPods](http://cocoapods.org) is a dependency manager for Cocoa projects. You can install it with the following command:
@@ -37,7 +49,7 @@ platform :ios, '18.0'
 use_frameworks!
 
 target '<Your Target Name>' do
-   pod 'CustomVideoPlayer', :git => 'https://github.com/ajkmr7/Custom-Video-Player.git', :tag => '1.1.0'
+   pod 'CustomVideoPlayer', :git => 'https://github.com/ethanbissbort/Custom-Video-Player.git', :tag => '2.0.0'
 end
 ```
 
@@ -55,7 +67,7 @@ To integrate Custom Video Player into your Xcode project using Swift Package Man
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ajkmr7/Custom-Video-Player.git", from: "1.1.0")
+    .package(url: "https://github.com/ethanbissbort/Custom-Video-Player.git", from: "2.0.0")
 ]
 ```
 
@@ -115,7 +127,7 @@ To see a working implementation of the Custom Video Player, you can use the Exam
 1. Clone this repository.
 
    ```bash
-   git clone https://github.com/ajkmr7/Custom-Video-Player.git
+   git clone https://github.com/ethanbissbort/Custom-Video-Player.git
    ```
 
 2. Navigate to the `Example` directory and install the necessary pods.

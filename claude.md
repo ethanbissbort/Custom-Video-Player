@@ -44,9 +44,19 @@ Custom-Video-Player/
 4. **Video Quality Selection** - Dynamic quality switching
 5. **Live Stream Support** - HLS live streaming capabilities
 6. **Error Handling** - Robust error detection and user feedback
-7. **A-B Repeat Loop** - Loop between precise A and B points with frame-level accuracy
-8. **Segment Playlists** - Create playlists of video segments for custom viewing sequences
-9. **Timecode Input** - Enter precise timestamps down to frame number (HH:MM:SS:FF)
+7. **A-B Repeat Loop** - Loop between an A and a B point. Accuracy is limited: loop
+   detection runs inside a periodic time observer with a 1-second interval, so point B
+   overshoots by up to a second before the seek back to A fires. The seek itself uses
+   zero tolerance, but the *detection* is not frame-accurate.
+8. **Segment Playlists** - ⚠️ **Not yet implemented.** The model layer
+   (`SegmentPlaylist`, `PlaybackSegment`), storage (`ABLoopManager.addSegmentPlaylist`)
+   and playback advancement (`shouldAdvanceSegment(at:)`) exist, but there is no UI path
+   to create one: the "+ Create Segment Playlist" button opens an explanatory
+   `UIAlertController` and nothing else, and `addSegmentPlaylist` has zero callers in the
+   codebase. Sequential `A→B, then C→D` playback therefore cannot be reached by a user.
+9. **Timecode Input** - Enter timestamps in HH:MM:SS:FF form. See the frame-rate caveat
+   under "Notes for AI Assistance" — the frame field is only as accurate as the detected
+   frame rate, which falls back to 30.0 for HLS.
 
 ### Main Classes
 
@@ -86,7 +96,8 @@ Configuration object to initialize the player with a playlist.
 ### A-B Loop Models
 
 #### TimePoint
-Represents a precise timestamp with frame-level accuracy:
+Represents a timestamp at frame granularity (subject to the frame-rate detection caveat
+below):
 ```swift
 TimePoint(
     hours: Int,
@@ -150,6 +161,15 @@ SegmentPlaylist(
 5. Deactivate by tapping "Stop Loop"
 
 ### Using Segment Playlists
+
+⚠️ **Not reachable from the UI.** The "Segment Playlists" tab lists persisted playlists
+and the playback engine will advance through them, but there is no way to create one:
+tapping "+ Create Segment Playlist" presents an alert describing the feature and
+dismisses. `ABLoopManager.addSegmentPlaylist(_:for:)` is public but has no callers, so
+the only way to populate a playlist today is programmatically from host code.
+
+The intended flow, once a creation UI exists, is:
+
 1. Access the A-B Loop manager
 2. Switch to "Segment Playlists" tab
 3. Create a segment playlist with multiple A-B points
@@ -165,6 +185,8 @@ SegmentPlaylist(
 - Keep view controllers lightweight by delegating logic to view models
 
 ### Testing
+- SwiftPM test target `CustomVideoPlayerTests` in `Tests/CustomVideoPlayerTests` (45
+  tests), run by CI via `xcodebuild test` against an iOS simulator
 - Example app available in `Example/` directory
 - Run example: `cd Example && pod install && open Custom-Video-Player.xcworkspace`
 
@@ -187,13 +209,23 @@ SegmentPlaylist(
 
 ## Build & Distribution
 
+This repository is a fork of `ajkmr7/Custom-Video-Player`. The podspec's `homepage` and
+`source` point at `ethanbissbort/Custom-Video-Player`; the MIT `LICENSE` retains Ajay
+Kumar's 2023 copyright and both the original author and the fork maintainer are listed in
+`s.author`.
+
 ### CocoaPods
 Podspec: `CustomVideoPlayer.podspec`
-Latest tag: 1.1.0
+Podspec version: 2.0.0
+
+**No git tags exist in this repository.** `git tag` returns nothing, so neither the
+podspec's `:tag => s.version.to_s` nor the SwiftPM `from: "2.0.0"` will resolve until a
+`2.0.0` tag is pushed. See `CHANGELOG.md`.
 
 ### Swift Package Manager
 Package manifest: `Package.swift`
-Supports iOS 18.0+
+swift-tools-version 6.0, `swiftLanguageModes: [.v5]`, platform `.iOS(.v18)`
+Supports iOS 18.0+ (raised from iOS 11.0 — a breaking change for existing consumers)
 
 ## Notes for AI Assistance
 
@@ -204,7 +236,13 @@ Supports iOS 18.0+
 - Error handling is centralized in `VideoPlayerViewController+ErrorHandling.swift`
 - Delegate pattern used in `VideoPlayerViewController+Delegate.swift`
 - A-B loop data is persisted using UserDefaults via `ABLoopManager`
-- Frame-accurate seeking uses CMTime with tolerance set to zero
+- Seeks use CMTime with `toleranceBefore`/`toleranceAfter` set to zero, so the *seek* is
+  exact — but see the next point: what triggers the seek is not
+- Periodic time observer checks for loop/segment transitions once per second
+  (`CMTime(seconds: 1, ...)` in `VideoPlayerViewController`). Point B is therefore
+  detected up to ~1s late; the feature is not frame-accurate end-to-end
 - Timecode format follows industry standard: HH:MM:SS:FF (hours:minutes:seconds:frames)
-- Video frame rate is automatically detected from AVAsset track properties
-- Periodic time observer checks for loop/segment transitions every second
+- `getVideoFrameRate()` reads `playerItem?.asset.tracks(withMediaType: .video)`
+  synchronously. For HLS (`.m3u8`) streams — the primary format here — that returns an
+  empty array, so `ABLoopConstants.defaultFrameRate` (30.0) is the normal path, not an
+  edge case. Frame numbers in timecodes are computed against that assumed 30 fps
