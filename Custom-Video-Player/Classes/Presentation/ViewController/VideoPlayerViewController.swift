@@ -170,6 +170,10 @@ public class VideoPlayerViewController: UIViewController {
     @objc func shouldForceLandscape() {}
     
     @objc func appMovedToBackground() {
+        // Entering Picture in Picture backgrounds the app, so pausing unconditionally here would
+        // freeze the PiP window the moment it appears — continuing to play in the background is
+        // the entire point of PiP.
+        guard pictureInPictureController?.isPictureInPictureActive != true else { return }
         pausePlayer()
     }
     
