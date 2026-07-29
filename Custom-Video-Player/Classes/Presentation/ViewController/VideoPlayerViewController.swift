@@ -1,6 +1,7 @@
 import UIKit
 import AVKit
 import AVFoundation
+import MediaPlayer
 import os
 
 public class VideoPlayerViewController: UIViewController {
@@ -13,6 +14,46 @@ public class VideoPlayerViewController: UIViewController {
     private let logger = Logger(subsystem: "com.customvideoplayer", category: "VideoPlayerViewController")
 
     private var periodicTimeObserver: Any?
+    /// Fires exactly at the active A-B loop's point B.
+    ///
+    /// The 1 Hz `periodicTimeObserver` is far too coarse to close a loop on: point B could
+    /// overshoot by almost a full second, which is useless for the practice loops this library
+    /// exists to serve. A boundary observer is scheduled by the player itself at the precise
+    /// time, so it lands on the frame instead of on the next tick.
+    ///
+    /// Registered and re-registered exclusively through `updateLoopBoundaryObserver()` (which
+    /// removes any previous one first) and torn down in `removeLoopBoundaryObserver()`.
+    private var loopBoundaryTimeObserver: Any?
+    /// The Picture-in-Picture controller for the *current* player layer.
+    ///
+    /// Rebuilt from scratch every time `setupPlayer()` creates a new layer — an
+    /// `AVPictureInPictureController` is bound to the layer it was created with, so a stale one
+    /// would silently drive the previous video's (already detached) layer.
+    ///
+    /// `internal` (not `private`): toggled from VideoPlayerViewController+Delegate.swift.
+    var pictureInPictureController: AVPictureInPictureController?
+    /// Remote-command targets registered on `MPRemoteCommandCenter.shared()`, paired with the
+    /// command they belong to so every one can be handed back in `unregisterRemoteCommands()`.
+    ///
+    /// The command centre is a process-wide singleton: a target left behind outlives this
+    /// controller and keeps hijacking the host app's lock screen and Control Center.
+    private var remoteCommandTargets: [(command: MPRemoteCommand, target: Any)] = []
+    /// The rate the user picked with the speed control.
+    ///
+    /// Deliberately *not* pushed straight into `AVPlayer.rate`: assigning a non-zero rate is what
+    /// starts an `AVPlayer`, so writing it while paused would resume playback behind the user's
+    /// back. The selection is stored here and applied by `applySelectedPlaybackRate()` only while
+    /// playback is already running.
+    ///
+    /// `internal` (not `private`): read and written from VideoPlayerViewController+Delegate.swift.
+    private(set) var selectedPlaybackRate: Float = 1.0
+    /// The video track's real frame rate, once it has finished loading asynchronously.
+    ///
+    /// `nil` until then, which is why `getVideoFrameRate()` falls back to
+    /// `ABLoopConstants.defaultFrameRate`.
+    private var cachedVideoFrameRate: Double?
+    /// The in-flight frame-rate load, kept so it can be cancelled when the item is replaced.
+    private var frameRateLoadTask: Task<Void, Never>?
     private var didSetupControls: Bool = false
     /// Set when an audio session interruption pauses playback that was actually in progress, so
     /// that `.ended` only resumes what the interruption stopped. Without it a video the user had
@@ -74,6 +115,10 @@ public class VideoPlayerViewController: UIViewController {
         UIViewController.attemptRotationToDeviceOrientation()
         NotificationCenter.default.addObserver(self, selector: #selector(appMovedToBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         abLoopManager.delegate = self
+        // Registered once for the controller's lifetime and removed in `deinit`, deliberately not
+        // in `removeObservers()`: the command centre is a singleton shared with the host app, and
+        // re-registering per video switch would need a matching removal on every path.
+        registerRemoteCommands()
         addLoader()
         setupPlayer()
     }
@@ -140,6 +185,15 @@ public class VideoPlayerViewController: UIViewController {
             object: nil
         )
 
+        // Hand the process-wide media surfaces back to the host app. Both are singletons, so a
+        // target or a now-playing entry left behind here outlives this controller and keeps
+        // driving (or misreporting) playback the user can no longer see.
+        unregisterRemoteCommands()
+
+        // Bound to the outgoing player layer; nothing else releases it.
+        pictureInPictureController?.delegate = nil
+        pictureInPictureController = nil
+
         // An AVPlayerLayer retains its AVPlayer, so a layer left in the layer tree keeps the whole
         // player graph alive for as long as the view hierarchy does. Detach before discarding.
         playerLayer?.removeFromSuperlayer()
@@ -148,6 +202,14 @@ public class VideoPlayerViewController: UIViewController {
         // Hand the audio session back so other apps can resume theirs. Deliberately placed above
         // the live-content guard below, which returns early.
         deactivateAudioSession()
+
+        frameRateLoadTask?.cancel()
+        frameRateLoadTask = nil
+
+        // Above the live-content guard on purpose: the boundary observer is only ever registered
+        // for non-live content, but removing it is a no-op when there is none, and putting it
+        // here means no future edit to the guard can strand it on the player.
+        removeLoopBoundaryObserver()
 
         guard let isLiveContent = viewModel.isLiveContent, !isLiveContent else { return }
         if let periodicTimeObserver = periodicTimeObserver {
@@ -180,9 +242,15 @@ extension VideoPlayerViewController {
         if let subtitleStyling = subtitleStyling {
             playerItem?.textStyleRules = [subtitleStyling]
         }
+        // `.timeDomain` keeps pitch natural when the rate is changed, which is what makes 0.5x
+        // usable for practice; the default `.lowQualityZeroLatency` chipmunks the audio.
+        playerItem?.audioTimePitchAlgorithm = .timeDomain
         player = AVPlayer(playerItem: playerItem)
+        // AirPlay: without this the player refuses to hand video to an external route.
+        player?.allowsExternalPlayback = true
         addObservers()
         fetchSupportedQualities()
+        loadVideoFrameRate()
         // Defensive: `resetPlayerItems()` already detaches the outgoing layer, but this also covers
         // any path that reaches `setupPlayer()` twice without a reset in between. Leaving a stale
         // layer in the tree would both stack sublayers and pin the previous AVPlayer in memory.
@@ -191,8 +259,11 @@ extension VideoPlayerViewController {
         guard let playerLayer = playerLayer else { return }
         view.backgroundColor = .black
         view.layer.addSublayer(playerLayer)
+        // Strictly after the layer exists: the controller is bound to the layer it is built with,
+        // so it has to be rebuilt every time the layer is.
+        setupPictureInPicture(for: playerLayer)
     }
-    
+
     private func setupControls() {
         guard let totalDuration = player?.currentItem?.duration else { return }
         playerControlsView.totalTimeLabelText = viewModel.getFormattedTime(totalDuration: totalDuration.seconds)
@@ -205,6 +276,7 @@ extension VideoPlayerViewController {
             make.edges.equalToSuperview()
         }
         playerControlsView.delegate = self
+        playerControlsView.setPictureInPictureAvailable(pictureInPictureController != nil)
         setupGestureRecognizers()
         setupSubtiteSelectionView()
     }
@@ -219,6 +291,7 @@ extension VideoPlayerViewController {
             make.edges.equalToSuperview()
         }
         playerControlsView.delegate = self
+        playerControlsView.setPictureInPictureAvailable(pictureInPictureController != nil)
         setupGestureRecognizers()
         playerControlsView.enableLiveControls()
     }
@@ -251,19 +324,155 @@ extension VideoPlayerViewController {
         player?.pause()
         playerControlsView.playPauseButtonImage = VideoPlayerImage.playButton.uiImage
         viewModel.playerState = .pause
+        updateNowPlayingInfo()
     }
-    
+
     func resumePlayer() {
         guard viewModel.playerState == .pause else { return }
         player?.play()
         playerControlsView.playPauseButtonImage = VideoPlayerImage.pauseButton.uiImage
         viewModel.playerState = .play
+        // `play()` always resumes at 1.0, so the user's speed has to be re-applied on every
+        // resume — not only when they change it.
+        applySelectedPlaybackRate()
+        updateNowPlayingInfo()
     }
-    
+
     private func fetchSupportedQualities() {
         viewModel.delegate = self
         viewModel.fetchSupportedVideoQualites()
     }
+}
+
+// MARK: - Playback Speed
+
+extension VideoPlayerViewController {
+    /// Records a newly selected playback rate and applies it if playback is already running.
+    ///
+    /// - Parameter rate: The rate to select, e.g. `0.75` or `1.5`.
+    func setPlaybackRate(_ rate: Float) {
+        selectedPlaybackRate = rate
+        // No-op when paused — see `selectedPlaybackRate`. `resumePlayer()` picks it up.
+        applySelectedPlaybackRate()
+        updateNowPlayingInfo()
+    }
+
+    /// Pushes `selectedPlaybackRate` into the player, but only while playback is running.
+    ///
+    /// The guard is the whole point: `AVPlayer.rate` is not a preference, it is the transport
+    /// control. Writing a non-zero value while paused *starts* playback, so this must never run
+    /// on the paused path.
+    ///
+    /// `internal` (not `private`): also called from VideoPlayerViewController+Delegate.swift after
+    /// seek-bar scrubbing, which restarts the player at 1.0.
+    func applySelectedPlaybackRate() {
+        guard viewModel.playerState == .play, let player = player, player.rate != 0 else { return }
+        guard player.rate != selectedPlaybackRate else { return }
+        player.rate = selectedPlaybackRate
+    }
+}
+
+// MARK: - Now Playing Info & Remote Commands
+
+extension VideoPlayerViewController {
+    /// Publishes the current playback state to the lock screen and Control Center.
+    ///
+    /// Called on every state transition and on each 1 Hz tick, so the scrubber there tracks the
+    /// in-app one. The rate reported is the *selected* rate while playing and `0` while paused —
+    /// that is how the system decides which transport button to draw.
+    func updateNowPlayingInfo() {
+        var nowPlayingInfo: [String: Any] = [:]
+        nowPlayingInfo[MPMediaItemPropertyTitle] = viewModel.subtitleLabelText ?? viewModel.titleLabelText
+        nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = viewModel.titleLabelText
+
+        if let duration = player?.currentItem?.duration, duration.isNumeric {
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration.seconds
+        }
+        if let currentTime = player?.currentTime(), currentTime.isNumeric {
+            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime.seconds
+        }
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = viewModel.playerState == .play ? selectedPlaybackRate : 0.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = viewModel.isLiveContent ?? false
+
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+
+    /// Wires the lock screen / Control Center transport buttons to the in-app playback methods.
+    ///
+    /// Every target added here is recorded in `remoteCommandTargets` and handed back in
+    /// `unregisterRemoteCommands()`. The handlers capture `self` weakly: the command centre is a
+    /// singleton that holds its blocks until they are removed, so a strong capture would make
+    /// `deinit` — and therefore the removal itself — unreachable.
+    private func registerRemoteCommands() {
+        guard remoteCommandTargets.isEmpty else { return }
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        // Matches the in-app skip buttons, which move by `VideoPlayerViewModel.seekDuration`.
+        let skipInterval = NSNumber(value: VideoPlayerViewController.remoteSkipInterval)
+        commandCenter.skipForwardCommand.preferredIntervals = [skipInterval]
+        commandCenter.skipBackwardCommand.preferredIntervals = [skipInterval]
+
+        addRemoteCommandTarget(to: commandCenter.playCommand) { [weak self] _ in
+            guard let self = self, self.viewModel.playerState == .pause else { return .commandFailed }
+            self.resumePlayer()
+            return .success
+        }
+
+        addRemoteCommandTarget(to: commandCenter.pauseCommand) { [weak self] _ in
+            guard let self = self, self.viewModel.playerState == .play else { return .commandFailed }
+            self.pausePlayer()
+            return .success
+        }
+
+        addRemoteCommandTarget(to: commandCenter.togglePlayPauseCommand) { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.togglePlayPause()
+            return .success
+        }
+
+        addRemoteCommandTarget(to: commandCenter.skipForwardCommand) { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.seekForward()
+            return .success
+        }
+
+        addRemoteCommandTarget(to: commandCenter.skipBackwardCommand) { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.seekBackward()
+            return .success
+        }
+    }
+
+    /// Enables `command`, attaches `handler` and records the resulting target so that
+    /// `unregisterRemoteCommands()` can hand back exactly what was added.
+    ///
+    /// - Parameters:
+    ///   - command: The remote command to wire up.
+    ///   - handler: The block the system invokes; must not capture `self` strongly.
+    private func addRemoteCommandTarget(
+        to command: MPRemoteCommand,
+        handler: @escaping (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus
+    ) {
+        command.isEnabled = true
+        let target = command.addTarget(handler: handler)
+        remoteCommandTargets.append((command: command, target: target))
+    }
+
+    /// Exact counterpart of `registerRemoteCommands()`, plus the now-playing entry.
+    ///
+    /// Disabling is not enough on its own — a disabled command with a live target still retains
+    /// the block — so each target is explicitly removed from the command it was added to.
+    private func unregisterRemoteCommands() {
+        for entry in remoteCommandTargets {
+            entry.command.removeTarget(entry.target)
+            entry.command.isEnabled = false
+        }
+        remoteCommandTargets.removeAll()
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
+    /// Skip interval, in seconds, offered to the remote transport controls.
+    private static let remoteSkipInterval: Double = 15
 }
 
 // MARK: - Audio Session
@@ -368,6 +577,69 @@ extension VideoPlayerViewController {
     }
 }
 
+// MARK: - Picture in Picture
+
+extension VideoPlayerViewController {
+    /// Builds the Picture-in-Picture controller over `playerLayer`.
+    ///
+    /// An `AVPictureInPictureController` is permanently bound to the layer it was created with, so
+    /// this is called from `setupPlayer()` every time a layer is created and the previous
+    /// controller is dropped in `resetPlayerItems()`. Reusing one across a video switch would
+    /// leave it driving the old, already-detached layer.
+    ///
+    /// `isPictureInPictureSupported()` is `false` on the Simulator and on devices without PiP, in
+    /// which case no controller is built and the button stays hidden.
+    ///
+    /// - Note: PiP only actually starts when the *host* app declares the `audio` background mode;
+    ///   that is the integrator's `Info.plist`, not something a library can set. A missing entry
+    ///   surfaces through `failedToStartPictureInPictureWithError`, which is logged below.
+    ///
+    /// - Parameter playerLayer: The freshly created layer to attach to.
+    private func setupPictureInPicture(for playerLayer: AVPlayerLayer) {
+        pictureInPictureController?.delegate = nil
+        pictureInPictureController = nil
+
+        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+
+        let contentSource = AVPictureInPictureControllerContentSource(playerLayer: playerLayer)
+        let controller = AVPictureInPictureController(contentSource: contentSource)
+        controller.delegate = self
+        pictureInPictureController = controller
+    }
+}
+
+// MARK: - AVPictureInPictureControllerDelegate
+
+extension VideoPlayerViewController: AVPictureInPictureControllerDelegate {
+    public func pictureInPictureControllerWillStartPictureInPicture(_: AVPictureInPictureController) {
+        // The floating window carries its own transport controls; ours would sit on top of the
+        // (now empty) full-screen layer for no reason.
+        invalidateControlsHiddenTimer()
+        hideControls()
+    }
+
+    public func pictureInPictureControllerDidStopPictureInPicture(_: AVPictureInPictureController) {
+        resetControlsHiddenTimer()
+    }
+
+    public func pictureInPictureController(
+        _: AVPictureInPictureController,
+        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+    ) {
+        // This controller is never dismissed when PiP starts, so its view hierarchy and player
+        // layer are still intact and there is nothing to rebuild — report success immediately.
+        // Reporting `false` would make the system tear the PiP window down without restoring.
+        completionHandler(true)
+    }
+
+    public func pictureInPictureController(
+        _: AVPictureInPictureController,
+        failedToStartPictureInPictureWithError error: Error
+    ) {
+        logger.error("Picture in Picture failed to start: \(error.localizedDescription, privacy: .public)")
+    }
+}
+
 // MARK: - Main Thread Dispatch
 
 extension VideoPlayerViewController {
@@ -462,8 +734,18 @@ extension VideoPlayerViewController {
             if self.player?.currentItem?.status == .readyToPlay {
                 self.playerControlsView.seekBarValue = Float(time.seconds)
                 self.playerControlsView.currentTimeLabelText = time.durationText + "/"
+                self.updateNowPlayingInfo()
 
-                // Check for A-B loop
+                // `AVPlayer` silently resets `rate` to 1.0 after some seeks and stall recoveries.
+                // `applySelectedPlaybackRate()` only writes while the player is already moving, so
+                // this can never resurrect playback the user paused.
+                self.applySelectedPlaybackRate()
+
+                // Check for A-B loop.
+                //
+                // Kept as a backstop even though `loopBoundaryTimeObserver` is what actually
+                // closes the loop: a boundary observer does not fire if the loop was activated
+                // while the play head was already past point B, and this tick catches that.
                 if let loopSeekTime = self.abLoopManager.shouldLoop(at: time) {
                     self.player?.seek(to: loopSeekTime, toleranceBefore: CMTime.zero, toleranceAfter: CMTime.zero)
                 }
@@ -475,7 +757,54 @@ extension VideoPlayerViewController {
             }
         }
     }
-    
+
+    /// Re-registers the boundary observer that closes the active A-B loop at point B.
+    ///
+    /// Call this on every change of the active loop — including deactivation, where the guards
+    /// below simply leave no observer registered. Any previously registered observer is removed
+    /// first, so the add/remove pairing holds no matter how often this runs.
+    ///
+    /// Boundary observers are only meaningful on a fixed timeline, hence the live-content guard,
+    /// which mirrors the one guarding the periodic observer in `addObservers()`.
+    func updateLoopBoundaryObserver() {
+        removeLoopBoundaryObserver()
+
+        guard let isLiveContent = viewModel.isLiveContent, !isLiveContent,
+              let player = player,
+              let activeLoop = abLoopManager.getActiveLoop()
+        else {
+            return
+        }
+
+        let pointB = activeLoop.pointB.toCMTime()
+        guard pointB.isNumeric, pointB.seconds > 0 else { return }
+
+        loopBoundaryTimeObserver = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: pointB)],
+            queue: .main
+        ) { [weak self] in
+            guard let self = self else { return }
+            // Evaluated at `pointB` rather than at `player.currentTime()` because a boundary
+            // observer may fire a hair *before* the time it was scheduled for, which would make
+            // `shouldLoop(at:)`'s `currentTime >= endTime` test fail and skip the loop. Passing
+            // the boundary itself still lets the manager veto (the loop may have been changed or
+            // cleared since registration) and still drives its delegate callback.
+            guard let loopSeekTime = self.abLoopManager.shouldLoop(at: pointB) else { return }
+            self.player?.seek(to: loopSeekTime, toleranceBefore: CMTime.zero, toleranceAfter: CMTime.zero)
+        }
+    }
+
+    /// Removes the loop boundary observer if one is registered. Safe to call repeatedly.
+    ///
+    /// - Important: Must run before `player` is replaced — `removeTimeObserver(_:)` has to be sent
+    ///   to the same `AVPlayer` the observer was added to.
+    private func removeLoopBoundaryObserver() {
+        if let loopBoundaryTimeObserver = loopBoundaryTimeObserver {
+            player?.removeTimeObserver(loopBoundaryTimeObserver)
+        }
+        loopBoundaryTimeObserver = nil
+    }
+
     /// Removes the observers registered in `addObservers()` for the current `playerItem`/`player`.
     /// Must be called before discarding the current item (e.g. when switching videos) so that
     /// `AVPlayerItem`s are not deallocated while KVO observers are still registered.
@@ -483,7 +812,10 @@ extension VideoPlayerViewController {
     /// exactly what was registered. The app-lifecycle observer is intentionally NOT removed here
     /// (it is owned for the controller's lifetime and torn down in `deinit`); the audio session
     /// observers ARE, because `addObservers()` registers them and `setupPlayer()` re-runs on every
-    /// video switch — leaving them in place would register a second copy each time.
+    /// video switch — leaving them in place would register a second copy each time. The same goes
+    /// for the loop boundary observer: it is registered on demand by
+    /// `updateLoopBoundaryObserver()`, not by `addObservers()`, but it lives on the `AVPlayer`
+    /// being discarded here so it must come off before that player is replaced.
     private func removeObservers() {
         playerItem?.removeObserver(self, forKeyPath: "status")
         playerItem?.removeObserver(self, forKeyPath: "playbackLikelyToKeepUp")
@@ -495,6 +827,10 @@ extension VideoPlayerViewController {
 
         NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance())
         NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: AVAudioSession.sharedInstance())
+
+        // Above the live-content guard for the same reason as in `deinit`: it is a no-op when no
+        // boundary observer is registered, and being here means the guard can never strand one.
+        removeLoopBoundaryObserver()
 
         guard let isLiveContent = viewModel.isLiveContent, !isLiveContent else { return }
         if let periodicTimeObserver = periodicTimeObserver {
@@ -564,6 +900,9 @@ extension VideoPlayerViewController {
 
         if currentItem.isPlaybackLikelyToKeepUp {
             activityIndicatorView.stopAnimating()
+            // Recovering from a stall restarts the player at 1.0, so the user's speed has to be
+            // put back. No-op while paused — see `applySelectedPlaybackRate()`.
+            applySelectedPlaybackRate()
             // The stall handler invalidated the auto-hide timer to keep the controls on screen while
             // buffering. Restore it, otherwise the controls stay up for the rest of the session.
             resetControlsHiddenTimer()
@@ -645,9 +984,24 @@ extension VideoPlayerViewController {
         hideControls()
         didSetupControls = false
         disableGestureRecognizers()
+        // An A-B loop is expressed as absolute timecodes, so it is meaningless against a different
+        // video: left active it would keep firing against the new item's timeline and yank the
+        // user back to the previous video's point A. `setActiveLoop(nil)` also clears any active
+        // segment playlist, so this single call covers both modes.
+        abLoopManager.setActiveLoop(nil)
         // Remove observers from the outgoing item/player before discarding it, otherwise the
-        // AVPlayerItem is deallocated with KVO observers still registered.
+        // AVPlayerItem is deallocated with KVO observers still registered. This also removes the
+        // loop boundary observer, which must go back to the player it was added to.
         removeObservers()
+        // The resolved frame rate belongs to the outgoing asset; a new one is loaded by
+        // `setupPlayer()`, and until it lands callers fall back to the default.
+        frameRateLoadTask?.cancel()
+        frameRateLoadTask = nil
+        cachedVideoFrameRate = nil
+        // Bound to the layer being discarded below; `setupPlayer()` builds a fresh one.
+        pictureInPictureController?.delegate = nil
+        pictureInPictureController = nil
+        playerControlsView.setPictureInPictureAvailable(false)
         player?.replaceCurrentItem(with: nil)
         playerItem = nil
         // Detach before dropping the reference. An AVPlayerLayer retains its AVPlayer, so nilling
@@ -666,14 +1020,58 @@ extension VideoPlayerViewController {
 // MARK: - A-B Loop Functionality
 
 extension VideoPlayerViewController {
-    /// Gets the frame rate of the currently playing video
+    /// Gets the frame rate of the currently playing video.
     ///
-    /// - Returns: Frame rate as Double, defaults to ABLoopConstants.defaultFrameRate if unavailable
+    /// Returns the cached value resolved by `loadVideoFrameRate()`, or the default while that load
+    /// is still in flight (or if the asset never reports a usable rate). Timecodes computed from
+    /// the default are simply coarse, never invalid.
+    ///
+    /// - Returns: Frame rate as Double, defaults to `ABLoopConstants.defaultFrameRate` if unavailable
     func getVideoFrameRate() -> Double {
-        guard let track = playerItem?.asset.tracks(withMediaType: .video).first else {
-            return ABLoopConstants.defaultFrameRate
+        return cachedVideoFrameRate ?? ABLoopConstants.defaultFrameRate
+    }
+
+    /// Starts resolving the current asset's video frame rate and caches the result.
+    ///
+    /// This replaces the synchronous `asset.tracks(withMediaType:)` accessor, which is deprecated
+    /// *and* wrong here: for a remote HLS asset whose playlist has not been parsed yet it returns
+    /// an empty array, so the 30 fps fallback was the normal path and every A-B timecode was
+    /// computed against the wrong denominator. `load(_:)` waits for the asset to actually load.
+    private func loadVideoFrameRate() {
+        guard let asset = playerItem?.asset else { return }
+
+        frameRateLoadTask?.cancel()
+        frameRateLoadTask = Task { [weak self] in
+            let resolvedFrameRate = await VideoPlayerViewController.resolveFrameRate(for: asset)
+            // Cancellation means the item was replaced while the load was in flight, so the answer
+            // now describes an asset nobody is watching any more.
+            guard !Task.isCancelled, let resolvedFrameRate = resolvedFrameRate else { return }
+            guard let self = self else { return }
+            self.runOnMainThread {
+                self.cachedVideoFrameRate = resolvedFrameRate
+            }
         }
-        return Double(track.nominalFrameRate)
+    }
+
+    /// Loads the first video track's nominal frame rate.
+    ///
+    /// `static` so it holds no reference to the controller: the load can outlive a video switch,
+    /// and the caller decides — after checking cancellation — whether the answer is still wanted.
+    ///
+    /// - Parameter asset: The asset to inspect.
+    /// - Returns: The frame rate, or `nil` when the asset exposes no usable video track.
+    private static func resolveFrameRate(for asset: AVAsset) async -> Double? {
+        do {
+            let tracks = try await asset.loadTracks(withMediaType: .video)
+            guard let track = tracks.first else { return nil }
+            let nominalFrameRate = try await track.load(.nominalFrameRate)
+            // A track can legitimately report 0 before its format description is available;
+            // reporting that upward would divide by zero in `TimePoint`.
+            guard nominalFrameRate > 0 else { return nil }
+            return Double(nominalFrameRate)
+        } catch {
+            return nil
+        }
     }
 }
 
@@ -685,6 +1083,10 @@ extension VideoPlayerViewController: ABLoopViewControllerDelegate {
         // mutually exclusive by construction. Clearing the other mode again here would
         // enqueue a second block on the same serial queue that nils the loop just set.
         abLoopManager.setActiveLoop(loop)
+        // The boundary observer is what makes point B land on the frame instead of on the next
+        // 1 Hz tick, so it has to be rebuilt for the loop that was just activated (or torn down,
+        // when `loop` is nil).
+        updateLoopBoundaryObserver()
         resumePlayer()
         resetControlsHiddenTimer()
     }
@@ -692,6 +1094,10 @@ extension VideoPlayerViewController: ABLoopViewControllerDelegate {
     func didSelectSegmentPlaylist(_ playlist: SegmentPlaylist?) {
         // `setActiveSegmentPlaylist` already clears any active A-B loop — see above.
         abLoopManager.setActiveSegmentPlaylist(playlist)
+        // Activating a playlist deactivates the loop, so this removes the boundary observer.
+        // Segment ends stay on the 1 Hz path: their boundaries move as the playlist advances,
+        // and their precision was never advertised as frame-accurate.
+        updateLoopBoundaryObserver()
         resumePlayer()
         resetControlsHiddenTimer()
     }

@@ -18,6 +18,14 @@ class ABLoopViewController: UIViewController {
     private let frameRate: Double
     private var currentPlayerTime: CMTime
 
+    /// Duration of the video being edited, or an indefinite time when it is unknown.
+    ///
+    /// Supplied by the presenter when it knows the value; otherwise resolved lazily from
+    /// the presenting player — see `resolvedDuration`. Creation dialogs use it to reject
+    /// points past the end of the video, which would otherwise produce a loop that looks
+    /// normal, activates, and never fires.
+    private var videoDuration: CMTime
+
     // MARK: - UI Components
 
     private let containerView = UIView().configure {
@@ -75,10 +83,27 @@ class ABLoopViewController: UIViewController {
 
     // MARK: - Initialization
 
-    init(abLoopManager: ABLoopManager, videoIdentifier: String, frameRate: Double, currentTime: CMTime) {
+    /// Initializes the A-B loop panel
+    ///
+    /// - Parameters:
+    ///   - abLoopManager: Manager backing the listed loops and playlists
+    ///   - videoIdentifier: Identifier of the video being edited
+    ///   - frameRate: Frame rate of the video, used for frame-accurate timecode entry
+    ///   - currentTime: Playhead position at the moment the panel opened
+    ///   - duration: Duration of the video. Defaulted so existing call sites keep
+    ///     compiling; when it is left unspecified the panel falls back to reading the
+    ///     duration off the presenting player.
+    init(
+        abLoopManager: ABLoopManager,
+        videoIdentifier: String,
+        frameRate: Double,
+        currentTime: CMTime,
+        duration: CMTime = .indefinite
+    ) {
         self.viewModel = ABLoopViewModel(abLoopManager: abLoopManager, videoIdentifier: videoIdentifier)
         self.frameRate = frameRate
         self.currentPlayerTime = currentTime
+        self.videoDuration = duration
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .overFullScreen
         modalTransitionStyle = .crossDissolve
@@ -219,31 +244,106 @@ class ABLoopViewController: UIViewController {
     // MARK: - Helper Methods
 
     private func presentABLoopCreationDialog() {
-        let alert = ABLoopCreationViewController(
+        refreshPlaybackState()
+
+        let creationViewController = ABLoopCreationViewController(
             frameRate: frameRate,
             currentTime: currentPlayerTime,
+            duration: resolvedDuration,
             videoIdentifier: viewModel.videoIdentifier,
             abLoopManager: viewModel.abLoopManager
         )
-        alert.delegate = self
-        alert.modalPresentationStyle = .overFullScreen
-        alert.modalTransitionStyle = .crossDissolve
-        present(alert, animated: true)
+        creationViewController.delegate = self
+        creationViewController.modalPresentationStyle = .overFullScreen
+        creationViewController.modalTransitionStyle = .crossDissolve
+        present(creationViewController, animated: true)
     }
 
     private func presentSegmentPlaylistCreationDialog() {
-        let alert = UIAlertController(
-            title: "Create Segment Playlist",
-            message: "This feature allows you to create a playlist of video segments. Add multiple A-B points to create a custom viewing sequence.",
-            preferredStyle: .alert
+        refreshPlaybackState()
+
+        let creationViewController = SegmentPlaylistCreationViewController(
+            frameRate: frameRate,
+            currentTime: currentPlayerTime,
+            duration: resolvedDuration,
+            videoIdentifier: viewModel.videoIdentifier,
+            abLoopManager: viewModel.abLoopManager
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        creationViewController.delegate = self
+        present(creationViewController, animated: true)
     }
 
     /// Updates the current player time (called from parent when time changes)
+    ///
+    /// Also called from `refreshPlaybackState()` immediately before a creation dialog is
+    /// opened, so "Set to Current Time" reflects the playhead now rather than whenever the
+    /// panel happened to be opened.
+    ///
+    /// - Parameter time: The new playhead position
     func updateCurrentTime(_ time: CMTime) {
         currentPlayerTime = time
+    }
+
+    /// Updates the known duration of the video being edited
+    ///
+    /// - Parameter duration: The video's duration
+    func updateVideoDuration(_ duration: CMTime) {
+        videoDuration = duration
+    }
+
+    // MARK: - Playback State
+
+    /// The player driving the video this panel edits, when it can be reached.
+    ///
+    /// The panel is presented by the player view controller, so walking the presentation
+    /// chain is the one way back to live playback state that does not require the
+    /// presenter to push updates in. Every hop is optional and read-only: a different
+    /// presentation arrangement simply yields nil, and the panel falls back to the values
+    /// it was constructed with.
+    private var presentingPlayer: AVPlayer? {
+        var candidate: UIViewController? = presentingViewController
+        while let viewController = candidate {
+            if let playerViewController = viewController as? VideoPlayerViewController {
+                return playerViewController.player
+            }
+            candidate = viewController.presentingViewController
+        }
+        return nil
+    }
+
+    /// The duration to bounds-check timecodes against.
+    ///
+    /// Prefers whatever the presenter supplied and falls back to the presenting player's
+    /// current item. An indefinite result means "unknown" — live streams and assets that
+    /// have not loaded their duration yet — and callers skip the bound entirely.
+    private var resolvedDuration: CMTime {
+        if videoDuration.isNumeric {
+            return videoDuration
+        }
+        guard let itemDuration = presentingPlayer?.currentItem?.duration, itemDuration.isNumeric else {
+            return .indefinite
+        }
+        return itemDuration
+    }
+
+    /// Re-reads the playhead (and duration, if still unknown) from the presenting player.
+    ///
+    /// Called before opening a creation dialog. Together with dismissing the panel on
+    /// selection — see `tableView(_:didSelectRowAt:)` — this removes the window in which a
+    /// created loop could pick up a timestamp captured when the panel first opened.
+    private func refreshPlaybackState() {
+        guard let player = presentingPlayer else { return }
+
+        let time = player.currentTime()
+        if time.isNumeric {
+            updateCurrentTime(time)
+        }
+
+        if !videoDuration.isNumeric,
+           let itemDuration = player.currentItem?.duration,
+           itemDuration.isNumeric {
+            updateVideoDuration(itemDuration)
+        }
     }
 }
 
@@ -275,25 +375,30 @@ extension ABLoopViewController: UITableViewDelegate, UITableViewDataSource {
         return cell
     }
 
+    /// Activates the selected loop or playlist and closes the panel.
+    ///
+    /// Dismissing is part of the contract, not a nicety: the delegate resumes playback, so
+    /// leaving the panel open would let it float over a moving playhead while still holding
+    /// the timestamp it was constructed with. Closing here means a creation dialog is
+    /// always opened from a freshly presented panel.
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
 
         switch viewModel.currentMode {
         case .abLoop:
-            if let loop = viewModel.getABLoop(at: indexPath.row) {
-                delegate?.didSelectABLoop(loop)
-                delegate?.didRequestSeek(to: loop.pointA.toCMTime())
-            }
+            guard let loop = viewModel.getABLoop(at: indexPath.row) else { return }
+            delegate?.didSelectABLoop(loop)
+            delegate?.didRequestSeek(to: loop.pointA.toCMTime())
         case .segmentPlaylist:
-            if let playlist = viewModel.getSegmentPlaylist(at: indexPath.row) {
-                delegate?.didSelectSegmentPlaylist(playlist)
-                if let firstSegment = playlist.segments.first {
-                    delegate?.didRequestSeek(to: firstSegment.startPoint.toCMTime())
-                }
+            guard let playlist = viewModel.getSegmentPlaylist(at: indexPath.row) else { return }
+            delegate?.didSelectSegmentPlaylist(playlist)
+            if let firstSegment = playlist.segments.first {
+                delegate?.didRequestSeek(to: firstSegment.startPoint.toCMTime())
             }
         }
 
         updateUI()
+        dismiss(animated: true)
     }
 
     func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
@@ -327,6 +432,17 @@ extension ABLoopViewController: UIGestureRecognizerDelegate {
 
 extension ABLoopViewController: ABLoopCreationViewControllerDelegate {
     func didCreateABLoop(_ loop: ABLoop) {
+        viewModel.loadData()
+        updateUI()
+    }
+}
+
+// MARK: - SegmentPlaylistCreationViewControllerDelegate
+
+extension ABLoopViewController: SegmentPlaylistCreationViewControllerDelegate {
+    /// Reloads the list so a freshly saved playlist appears — and is therefore
+    /// selectable — without the panel having to be reopened.
+    func didCreateSegmentPlaylist(_ playlist: SegmentPlaylist) {
         viewModel.loadData()
         updateUI()
     }

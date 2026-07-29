@@ -31,6 +31,15 @@ public enum ABLoopConstants {
         /// Creation dialog width
         static let creationDialogWidth: CGFloat = 500
 
+        /// Segment playlist creation dialog width
+        ///
+        /// Wider than `creationDialogWidth` because the start and end timecode inputs sit
+        /// side by side to leave vertical room for the segment list.
+        static let segmentPlaylistDialogWidth: CGFloat = 600
+
+        /// Segment playlist creation dialog height
+        static let segmentPlaylistDialogHeight: CGFloat = 640
+
         /// Table view cell height
         static let cellHeight: CGFloat = 60
 
@@ -78,6 +87,7 @@ public enum ABLoopConstants {
         // Titles
         static let abLoopTitle = "A-B Loop & Segments"
         static let createLoopTitle = "Create A-B Loop"
+        static let createSegmentPlaylistTitle = "Create Segment Playlist"
 
         // Buttons
         static let createNewLoop = "+ Create New A-B Loop"
@@ -86,6 +96,9 @@ public enum ABLoopConstants {
         static let cancel = "Cancel"
         static let createLoop = "Create Loop"
         static let setToCurrentTime = "Set to Current Time"
+        static let addSegment = "+ Add Segment"
+        static let savePlaylist = "Save Playlist"
+        static let okAction = "OK"
 
         // Labels
         static let loopNameLabel = "Loop Name (optional)"
@@ -93,6 +106,13 @@ public enum ABLoopConstants {
         static let pointALabel = "Point A (Start)"
         static let pointBLabel = "Point B (End)"
         static let timecodeFormat = "HH:MM:SS:FF"
+        static let playlistNameLabel = "Playlist Name (optional)"
+        static let playlistNamePlaceholder = "Enter playlist name"
+        static let loopPlaylistLabel = "Loop Playlist"
+        static let segmentStartLabel = "Segment Start"
+        static let segmentEndLabel = "Segment End"
+        static let segmentsHeader = "Segments"
+        static let noSegmentsYet = "No segments yet — add one above."
 
         // Segments
         static let abLoopsSegment = "A-B Loops"
@@ -103,9 +123,18 @@ public enum ABLoopConstants {
         static let invalidInputMessage = "Please enter valid timecodes for both Point A and Point B."
         static let invalidRangeTitle = "Invalid Range"
         static let invalidRangeMessage = "Point B must be after Point A."
+        static let invalidSegmentMessage = "Please enter valid timecodes for both the segment start and end."
+        static let invalidPlaylistTitle = "Invalid Playlist"
+        static let emptyPlaylistMessage = "Add at least one segment before saving the playlist."
+        static let durationExceededTitle = "Beyond Video End"
+        static let durationExceededMessage = "That time point is past the end of the video."
 
         // Defaults
         static let defaultLoopName = "A-B Loop"
+        static let defaultPlaylistName = "Segment Playlist"
+
+        /// Display name for a segment, formatted with its 1-based position.
+        static let segmentNameFormat = "Segment %d"
     }
 
     // MARK: - Animation

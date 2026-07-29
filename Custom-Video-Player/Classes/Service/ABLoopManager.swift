@@ -373,17 +373,57 @@ public class ABLoopManager {
 
     /// Clears all loop data for a specific video (thread-safe)
     ///
+    /// Only the activation state belonging to `videoIdentifier` is torn down. The clear
+    /// used to deactivate *any* non-nil `currentActiveLoop`, so wiping video A's saved
+    /// loops silently killed a loop the user had running on video B.
+    ///
     /// - Parameter videoIdentifier: Identifier for the video
     public func clearLoopData(for videoIdentifier: String) {
         stateQueue.sync {
-            videoLoopData.removeValue(forKey: videoIdentifier)
-            if currentActiveLoop != nil || currentSegmentPlaylist?.videoIdentifier == videoIdentifier {
+            let removedData = videoLoopData.removeValue(forKey: videoIdentifier)
+
+            if let activeLoop = currentActiveLoop,
+               loopBelongsLocked(activeLoop, to: videoIdentifier, removedData: removedData) {
                 currentActiveLoop = nil
+            }
+
+            if currentSegmentPlaylist?.videoIdentifier == videoIdentifier {
                 currentSegmentPlaylist = nil
                 currentSegment = nil
             }
+
             saveLoopDataLocked()
         }
+    }
+
+    /// Decides whether a loop belongs to the video being cleared.
+    ///
+    /// A loop created since `ABLoop.videoIdentifier` exists answers for itself. One
+    /// restored from an older archive carries no owner, so it is attributed to the video
+    /// whose stored bucket it was just removed from — which is the only place it could
+    /// have been reached from. A loop that matches neither is left alone, because
+    /// deactivating it is exactly the over-clearing this method exists to avoid.
+    ///
+    /// - Important: Must be called from inside a `stateQueue` block.
+    ///
+    /// - Parameters:
+    ///   - loop: The currently active loop
+    ///   - videoIdentifier: Identifier of the video being cleared
+    ///   - removedData: The stored data just removed for that video, if any
+    /// - Returns: true when the loop belongs to the cleared video
+    private func loopBelongsLocked(
+        _ loop: ABLoop,
+        to videoIdentifier: String,
+        removedData: VideoLoopData?
+    ) -> Bool {
+        if let owner = loop.videoIdentifier {
+            return owner == videoIdentifier
+        }
+
+        guard let removedLoops = removedData?.abLoops else {
+            return false
+        }
+        return removedLoops.contains { $0.id == loop.id }
     }
 
     /// Clears all loop data (thread-safe)

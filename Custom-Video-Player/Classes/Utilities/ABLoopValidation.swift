@@ -136,9 +136,14 @@ enum ABLoopValidation {
 
     /// Validates that a time point is within video duration
     ///
+    /// A loop whose point B sits past the end of the asset looks perfectly normal in the
+    /// list and activates without complaint, but playback can never reach point B, so the
+    /// loop never fires. The creation flows call this for both points before saving.
+    ///
     /// - Parameters:
     ///   - timePoint: Time point to validate
-    ///   - duration: Video duration
+    ///   - duration: Video duration. Callers must only pass a numeric duration; an
+    ///     indefinite one (live stream, asset still loading) carries no bound to check.
     /// - Returns: ValidationResult indicating success or failure
     static func validateTimePointWithinDuration(
         _ timePoint: TimePoint,
@@ -147,7 +152,7 @@ enum ABLoopValidation {
         let time = timePoint.toCMTime()
 
         guard time <= duration else {
-            return .failure("Time point exceeds video duration")
+            return .failure(ABLoopConstants.Strings.durationExceededMessage)
         }
 
         return .success
@@ -161,7 +166,7 @@ enum ABLoopValidation {
     /// - Returns: ValidationResult indicating success or failure
     static func validateSegmentPlaylist(_ playlist: SegmentPlaylist) -> ValidationResult {
         guard !playlist.segments.isEmpty else {
-            return .failure("Segment playlist must contain at least one segment")
+            return .failure(ABLoopConstants.Strings.emptyPlaylistMessage)
         }
 
         // Validate each segment

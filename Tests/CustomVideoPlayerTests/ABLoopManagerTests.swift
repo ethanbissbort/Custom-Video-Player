@@ -413,4 +413,164 @@ final class ABLoopManagerTests: XCTestCase {
             )
         }
     }
+
+    // MARK: - Scoped clearing
+
+    private static let otherVideoID = "https://example.com/second-video.m3u8"
+
+    private func makeOwnedLoop(
+        fromSeconds start: Int,
+        toSeconds end: Int,
+        owner: String,
+        name: String? = nil
+    ) -> ABLoop {
+        ABLoop(
+            pointA: TimePoint(seconds: start),
+            pointB: TimePoint(seconds: end),
+            name: name,
+            videoIdentifier: owner
+        )
+    }
+
+    /// Regression test for the over-clearing defect: `clearLoopData(for:)` used to nil
+    /// `currentActiveLoop` whenever it was non-nil, with no check that the loop had
+    /// anything to do with the video being cleared. Clearing video A therefore silently
+    /// stopped a loop the user had running on video B.
+    func testClearingOneVideosDataLeavesAnotherVideosActiveLoopAlone() {
+        let otherVideoID = Self.otherVideoID
+        let otherLoop = makeOwnedLoop(fromSeconds: 5, toSeconds: 10, owner: otherVideoID, name: "Still running")
+
+        manager.addABLoop(makeOwnedLoop(fromSeconds: 0, toSeconds: 3, owner: videoID), for: videoID)
+        manager.addABLoop(otherLoop, for: otherVideoID)
+        manager.setActiveLoop(otherLoop)
+
+        manager.clearLoopData(for: videoID)
+
+        XCTAssertEqual(
+            manager.getActiveLoop(),
+            otherLoop,
+            "Clearing one video must not deactivate a loop belonging to another."
+        )
+        XCTAssertTrue(manager.getABLoops(for: videoID).isEmpty, "The cleared video's loops must be gone.")
+        XCTAssertEqual(manager.getABLoops(for: otherVideoID), [otherLoop])
+    }
+
+    func testClearingAVideosDataDeactivatesThatVideosOwnLoop() {
+        let loop = makeOwnedLoop(fromSeconds: 0, toSeconds: 5, owner: videoID)
+        manager.addABLoop(loop, for: videoID)
+        manager.setActiveLoop(loop)
+
+        manager.clearLoopData(for: videoID)
+
+        XCTAssertNil(manager.getActiveLoop(), "The cleared video's own loop must be deactivated.")
+    }
+
+    /// Loops restored from an archive written before `ABLoop.videoIdentifier` existed carry
+    /// no owner, so they are attributed to the stored bucket they are removed from.
+    func testClearingAVideosDataDeactivatesAnUnattributedLoopStoredUnderIt() {
+        let legacyLoop = makeLoop(fromSeconds: 0, toSeconds: 5, name: "No owner recorded")
+        XCTAssertNil(legacyLoop.videoIdentifier, "This test is only meaningful for an unattributed loop.")
+
+        manager.addABLoop(legacyLoop, for: videoID)
+        manager.setActiveLoop(legacyLoop)
+
+        manager.clearLoopData(for: videoID)
+
+        XCTAssertNil(manager.getActiveLoop())
+    }
+
+    func testClearingAVideoLeavesAnUnattributedLoopFromAnotherVideoActive() {
+        let otherVideoID = Self.otherVideoID
+        let legacyLoop = makeLoop(fromSeconds: 20, toSeconds: 30, name: "Other video, no owner")
+
+        manager.addABLoop(legacyLoop, for: otherVideoID)
+        manager.addABLoop(makeLoop(fromSeconds: 0, toSeconds: 3), for: videoID)
+        manager.setActiveLoop(legacyLoop)
+
+        manager.clearLoopData(for: videoID)
+
+        XCTAssertEqual(
+            manager.getActiveLoop(),
+            legacyLoop,
+            "An unattributed loop stored under a different video must survive the clear."
+        )
+    }
+
+    func testClearingAVideosDataDeactivatesItsSegmentPlaylistOnly() {
+        let otherVideoID = Self.otherVideoID
+        let otherPlaylist = SegmentPlaylist(
+            name: "Other video",
+            segments: [
+                PlaybackSegment(
+                    startPoint: TimePoint(seconds: 0),
+                    endPoint: TimePoint(seconds: 5),
+                    order: 0
+                )
+            ],
+            videoIdentifier: otherVideoID
+        )
+
+        manager.addSegmentPlaylist(makePlaylist(), for: videoID)
+        manager.addSegmentPlaylist(otherPlaylist, for: otherVideoID)
+        manager.setActiveSegmentPlaylist(otherPlaylist)
+
+        manager.clearLoopData(for: videoID)
+
+        XCTAssertEqual(manager.getActiveSegmentPlaylist(), otherPlaylist)
+        XCTAssertTrue(manager.getSegmentPlaylists(for: videoID).isEmpty)
+    }
+
+    // MARK: - Stored-format compatibility
+
+    /// The compatibility guarantee behind `ABLoop.videoIdentifier` being optional: a blob
+    /// written before the property existed must still decode. If it did not, the whole
+    /// archive would fail to decode, be quarantined, and every loop the user ever saved
+    /// would disappear from the UI on upgrade.
+    func testLoopsPersistedBeforeVideoIdentifierExistedStillDecode() {
+        let loopID = UUID()
+        let legacyJSON = """
+        [
+          {
+            "videoIdentifier": "\(videoID)",
+            "abLoops": [
+              {
+                "id": "\(loopID.uuidString)",
+                "pointA": { "hours": 0, "minutes": 0, "seconds": 5, "frames": 0, "frameRate": 30 },
+                "pointB": { "hours": 0, "minutes": 0, "seconds": 10, "frames": 0, "frameRate": 30 },
+                "name": "Saved before the upgrade"
+              }
+            ],
+            "segmentPlaylists": []
+          }
+        ]
+        """
+
+        UserDefaults.standard.set(Data(legacyJSON.utf8), forKey: ABLoopConstants.storageKey)
+        UserDefaults.standard.removeObject(forKey: ABLoopManager.corruptedStorageKey)
+
+        let reloaded = ABLoopManager()
+        let loops = reloaded.getABLoops(for: videoID)
+
+        XCTAssertEqual(loops.count, 1, "An archive without `videoIdentifier` must still load.")
+        XCTAssertEqual(loops.first?.id, loopID)
+        XCTAssertEqual(loops.first?.name, "Saved before the upgrade")
+        XCTAssertEqual(loops.first?.pointA.seconds, 5)
+        XCTAssertEqual(loops.first?.pointB.seconds, 10)
+        XCTAssertNil(loops.first?.videoIdentifier, "A missing key decodes as 'unknown owner', not a failure.")
+        XCTAssertNil(
+            UserDefaults.standard.data(forKey: ABLoopManager.corruptedStorageKey),
+            "A tolerated absence is not a decode failure, so nothing may be quarantined."
+        )
+    }
+
+    func testAVideoIdentifierSurvivesAPersistenceRoundTrip() {
+        let loop = makeOwnedLoop(fromSeconds: 1, toSeconds: 2, owner: videoID, name: "Owned")
+
+        manager.addABLoop(loop, for: videoID)
+
+        let reloaded = ABLoopManager().getABLoops(for: videoID)
+
+        XCTAssertEqual(reloaded, [loop])
+        XCTAssertEqual(reloaded.first?.videoIdentifier, videoID)
+    }
 }
