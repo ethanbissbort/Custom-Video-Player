@@ -3,6 +3,8 @@ import PackageDescription
 
 let package = Package(
     name: "CustomVideoPlayer",
+    // Required before SwiftPM will accept localized resources (Resources/en.lproj).
+    defaultLocalization: "en",
     platforms: [
         .iOS(.v18)
     ],
@@ -24,7 +26,8 @@ let package = Package(
             path: "Custom-Video-Player",
             resources: [
                 .process("Assets/Color.xcassets"),
-                .process("Assets/Images.xcassets")
+                .process("Assets/Images.xcassets"),
+                .process("Resources")
             ]
         ),
         .testTarget(

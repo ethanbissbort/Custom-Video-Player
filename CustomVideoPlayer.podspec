@@ -27,6 +27,9 @@ Pod::Spec.new do |s|
   s.dependency 'SnapKit'
   
    s.resource_bundles = {
-    'ResourcesBundle' => ['Custom-Video-Player/Assets/**']
+    'ResourcesBundle' => [
+      'Custom-Video-Player/Assets/**',
+      'Custom-Video-Player/Resources/**/*.lproj'
+    ]
   }
 end
