@@ -20,6 +20,9 @@
 "error.playback" = "This video could not be played.";
 "error.back" = "Back";
 
+/* Shown when playback stops short of the end without reporting a load failure. */
+"error.interrupted" = "Playback was interrupted. Please try again.";
+
 /* ---------------------------------------------------------------- Transport controls */
 
 "player.live" = "LIVE";
@@ -52,6 +55,13 @@
 "quality.auto" = "Auto";
 "selection.selected.accessibility" = "Selected";
 
+/* Row title for a track that carries subtitles for the deaf and hard of hearing.
+   %@ is the track's own display name, e.g. "English". */
+"subtitles.sdh" = "%@ (SDH)";
+
+"subtitles.list.accessibility" = "Subtitle tracks";
+"quality.list.accessibility" = "Video qualities";
+
 /* ---------------------------------------------------------------- A-B loop */
 
 "abloop.title" = "A-B Loops";
@@ -71,6 +81,18 @@
 "abloop.active.accessibility" = "Active";
 "abloop.timecodeField.accessibility" = "Timecode, hours minutes seconds frames";
 
+"abloop.panel.title" = "A-B Loop & Segments";
+"abloop.createTitle" = "Create A-B Loop";
+"abloop.createLoop" = "Create Loop";
+"abloop.nameLabel" = "Loop Name (optional)";
+
+"abloop.close.accessibility" = "Close";
+"abloop.mode.accessibility" = "List to show";
+"abloop.list.accessibility" = "Saved A-B loops";
+"abloop.segmentList.accessibility" = "Saved segment playlists";
+"abloop.setPointA.accessibility" = "Set point A to the current playback time";
+"abloop.setPointB.accessibility" = "Set point B to the current playback time";
+
 /* ---------------------------------------------------------------- Segment playlists */
 
 "segment.name" = "Playlist name";
@@ -83,6 +105,19 @@
 /* Segment row title. %d is the 1-based position in the playlist. */
 "segment.rowTitle" = "Segment %d";
 
+"segment.createTitle" = "Create Segment Playlist";
+"segment.nameLabel" = "Playlist Name (optional)";
+"segment.header" = "Segments";
+"segment.save" = "Save Playlist";
+"segment.defaultName" = "Segment Playlist";
+
+"segment.list.accessibility" = "Segments in this playlist";
+"segment.setStart.accessibility" = "Set the segment start to the current playback time";
+"segment.setEnd.accessibility" = "Set the segment end to the current playback time";
+
+/* Announced after a segment is appended. %d is the new segment's 1-based position. */
+"segment.added.accessibility" = "Segment %d added";
+
 /* ---------------------------------------------------------------- Validation */
 
 "validation.invalidTitle" = "Invalid Input";
@@ -92,3 +127,21 @@
 "validation.beyondDuration" = "That time is beyond the end of this video.";
 "validation.emptyPlaylist" = "Add at least one segment before saving.";
 "validation.ok" = "OK";
+"validation.beyondDurationTitle" = "Beyond Video End";
+"validation.invalidPlaylistTitle" = "Invalid Playlist";
+
+/* ---------------------------------------------------------------- Seek bar position */
+
+/* Spoken seek-bar position, replacing the "47 percent" a bare slider would announce.
+   %1$@ is the elapsed time and %2$@ the total duration, both already spelled out in words
+   ("1 minute, 5 seconds"). */
+"player.seekBar.value.accessibility" = "%1$@ of %2$@";
+
+/* ---------------------------------------------------------------- Timecode fields */
+
+/* The four timecode fields look identical to VoiceOver, so each names its own unit; the
+   ":" separators and the "HH:MM:SS:FF" hint are visual only. */
+"abloop.hours.accessibility" = "Hours";
+"abloop.minutes.accessibility" = "Minutes";
+"abloop.seconds.accessibility" = "Seconds";
+"abloop.frames.accessibility" = "Frames";
