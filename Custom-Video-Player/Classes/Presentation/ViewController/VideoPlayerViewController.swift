@@ -103,8 +103,9 @@ public class VideoPlayerViewController: UIViewController {
     }
     
     override public func viewWillDisappear(_: Bool) {
+        // `resetOrientation` already calls `setNeedsUpdateOfSupportedInterfaceOrientations()`,
+        // which replaced the deprecated `attemptRotationToDeviceOrientation()` in iOS 16.
         resetOrientation(UIInterfaceOrientationMask.portrait)
-        UIViewController.attemptRotationToDeviceOrientation()
         navigationController?.setNavigationBarHidden(false, animated: false)
         tabBarController?.tabBar.isHidden = false
     }
@@ -112,7 +113,6 @@ public class VideoPlayerViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         resetOrientation(UIInterfaceOrientationMask.landscapeRight)
-        UIViewController.attemptRotationToDeviceOrientation()
         NotificationCenter.default.addObserver(self, selector: #selector(appMovedToBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         abLoopManager.delegate = self
         // Registered once for the controller's lifetime and removed in `deinit`, deliberately not
@@ -601,7 +601,7 @@ extension VideoPlayerViewController {
 
         guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
 
-        let contentSource = AVPictureInPictureControllerContentSource(playerLayer: playerLayer)
+        let contentSource = AVPictureInPictureController.ContentSource(playerLayer: playerLayer)
         let controller = AVPictureInPictureController(contentSource: contentSource)
         controller.delegate = self
         pictureInPictureController = controller
