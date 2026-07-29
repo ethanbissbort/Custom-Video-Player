@@ -8,9 +8,15 @@ struct VideoQuality {
 
 /// Extension to provide additional functionalities for arrays of VideoQuality.
 extension [VideoQuality] {
-    
+
     /// Sorts the video qualities by bitrate in descending order and inserts an "Auto" option at the beginning.
+    ///
+    /// An empty array is left empty. "Auto" only means anything next to the variants it can switch
+    /// between, and the settings button is unhidden whenever the quality list is non-empty — so
+    /// prepending it unconditionally turned an unparseable or empty manifest into a working-looking
+    /// quality menu with a single bogus row.
     mutating func sortAndInsertAutoVideoQualityOption() {
+        guard !isEmpty else { return }
         sort(by: { $0.bitrate > $1.bitrate })
         let autoQualityOption = VideoQuality(bitrate: Double.greatestFiniteMagnitude, resolution: "Auto")
         insert(autoQualityOption, at: 0)
@@ -32,7 +38,9 @@ final class M3u8Helper {
     /// Fetches supported video qualities from the provided M3U8 manifest data.
     ///
     /// - Parameter data: The M3U8 manifest data.
-    /// - Returns: An array of `VideoQuality` objects representing the supported qualities.
+    /// - Returns: The supported qualities, highest bitrate first and led by an "Auto" entry, or an
+    ///   empty array when the data declares no usable variant. Callers use emptiness to decide
+    ///   whether to offer a quality menu at all, so an unparseable manifest must yield nothing.
     func fetchSupportedVideoQualities(with data: Data) -> [VideoQuality] {
         handleManifest(data: data)
         qualities.sortAndInsertAutoVideoQualityOption()

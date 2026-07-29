@@ -32,7 +32,8 @@ final class M3U8HelperTests: XCTestCase {
 
         let result = qualities(for: manifest)
 
-        // "Auto" is always prepended, so two variants yield three entries.
+        // "Auto" is prepended whenever at least one variant parsed, so two variants yield three
+        // entries.
         XCTAssertEqual(result.count, 3)
         XCTAssertEqual(result.map(\.resolution), ["Auto", "720p", "360p"])
         XCTAssertEqual(result[1].bitrate, 2_560_000)
@@ -55,7 +56,7 @@ final class M3U8HelperTests: XCTestCase {
         XCTAssertEqual(result.map(\.resolution), ["Auto", "1080p", "480p", "240p"])
     }
 
-    func testAlwaysOffersAnAutoOptionFirst() {
+    func testOffersAnAutoOptionFirstWhenAVariantParses() {
         let result = qualities(for: """
         #EXTM3U
         #EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360
@@ -170,6 +171,11 @@ final class M3U8HelperTests: XCTestCase {
 
     // MARK: - Malformed input
 
+    // A manifest that declares no usable variant yields no qualities at all — not a lone "Auto".
+    // "Auto" is only meaningful next to the variants it switches between, and the settings button
+    // is unhidden whenever the quality list is non-empty, so a bare "Auto" presented a
+    // working-looking quality menu with a single bogus row.
+
     /// BANDWIDTH is required by the HLS specification; a variant that only declares the average
     /// is malformed, and guessing a peak bitrate from it would mislabel the quality menu.
     func testIgnoresVariantsThatOnlyDeclareAverageBandwidth() {
@@ -179,7 +185,7 @@ final class M3U8HelperTests: XCTestCase {
         high.m3u8
         """
 
-        XCTAssertEqual(qualities(for: manifest).map(\.resolution), ["Auto"])
+        XCTAssertTrue(qualities(for: manifest).isEmpty)
     }
 
     func testIgnoresVariantsMissingAnAttribute() {
@@ -191,18 +197,18 @@ final class M3U8HelperTests: XCTestCase {
         no-bandwidth.m3u8
         """
 
-        XCTAssertEqual(qualities(for: manifest).map(\.resolution), ["Auto"])
+        XCTAssertTrue(qualities(for: manifest).isEmpty)
     }
 
-    func testReturnsOnlyAutoForNonManifestContent() {
+    func testReturnsNoQualitiesForNonManifestContent() {
         // `APIClientService` now rejects non-2xx responses, but the parser stays the second
         // line of defence: an error page must not yield bogus quality entries.
         let result = qualities(for: "<html><body>404 Not Found</body></html>")
 
-        XCTAssertEqual(result.map(\.resolution), ["Auto"])
+        XCTAssertTrue(result.isEmpty, "An error page must not produce a quality menu.")
     }
 
-    func testReturnsOnlyAutoForEmptyData() {
-        XCTAssertEqual(helper.fetchSupportedVideoQualities(with: Data()).map(\.resolution), ["Auto"])
+    func testReturnsNoQualitiesForEmptyData() {
+        XCTAssertTrue(helper.fetchSupportedVideoQualities(with: Data()).isEmpty)
     }
 }
