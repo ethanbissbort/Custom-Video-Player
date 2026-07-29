@@ -1,4 +1,5 @@
 import AVFoundation
+import UIKit
 
 extension VideoPlayerViewController {
 
@@ -14,11 +15,23 @@ extension VideoPlayerViewController {
             return
         }
         if error is URLError {
-            setUpPlayerItemError(errorMessage: "Please check your internet connection. Seems to be offline!")
+            setUpPlayerItemError(errorMessage: CVPLocalized(
+                "error.network",
+                value: "Please check your internet connection and try again.",
+                comment: "Full-screen playback error shown when the device appears to be offline"
+            ))
         } else if error is AVError {
-            setUpPlayerItemError(errorMessage: "Video Player failed to load!")
+            setUpPlayerItemError(errorMessage: CVPLocalized(
+                "error.playback",
+                value: "This video could not be played.",
+                comment: "Full-screen playback error shown when AVFoundation cannot play the item"
+            ))
         } else {
-            setUpPlayerItemError(errorMessage: "Something went wrong. Please try again!")
+            setUpPlayerItemError(errorMessage: CVPLocalized(
+                "error.title",
+                value: "Something went wrong. Please try again!",
+                comment: "Full-screen playback error shown for an unrecognised failure"
+            ))
         }
     }
 
@@ -35,7 +48,11 @@ extension VideoPlayerViewController {
             if let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error {
                 self.handlePlayerError(error)
             } else {
-                self.setUpPlayerItemError(errorMessage: "Playback was interrupted. Please try again.")
+                self.setUpPlayerItemError(errorMessage: CVPLocalized(
+                    "error.interrupted",
+                    value: "Playback was interrupted. Please try again.",
+                    comment: "Full-screen playback error shown when playback stops short of the end"
+                ))
             }
         }
     }
@@ -84,5 +101,10 @@ extension VideoPlayerViewController {
             make.trailing.equalToSuperview().offset(-CGFloat.space16)
             make.top.bottom.equalToSuperview()
         }
+
+        // The player is gone and the whole screen is now this error, so VoiceOver has to be told
+        // to re-read it — otherwise focus stays on a transport control that no longer exists and
+        // the user is never told why playback stopped.
+        UIAccessibility.post(notification: .screenChanged, argument: errorView)
     }
 }

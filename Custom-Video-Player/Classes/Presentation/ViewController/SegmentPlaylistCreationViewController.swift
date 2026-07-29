@@ -49,22 +49,56 @@ final class SegmentPlaylistCreationViewController: UIViewController {
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
     }
 
+    /// Dynamic Type is applied with a cap throughout this dialog: its container has a fixed
+    /// height, so text follows the user's size setting but cannot push the segment list out of it.
     private let titleLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.createSegmentPlaylistTitle
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 20)
+        $0.text = CVPLocalized(
+            "segment.createTitle",
+            value: "Create Segment Playlist",
+            comment: "Title of the dialog for creating a segment playlist"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .title3).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 20),
+            maximumPointSize: 28
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
         $0.textAlignment = .center
+        $0.numberOfLines = 0
+        $0.accessibilityTraits = .header
     }
 
     private let nameLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.playlistNameLabel
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 14)
+        $0.text = CVPLocalized(
+            "segment.nameLabel",
+            value: "Playlist Name (optional)",
+            comment: "Field label above the playlist name text field"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 14),
+            maximumPointSize: 20
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .pearlWhite).uiColor
+        $0.numberOfLines = 0
     }
 
     private let nameTextField = UITextField().configure {
-        $0.placeholder = ABLoopConstants.Strings.playlistNamePlaceholder
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+        $0.placeholder = CVPLocalized(
+            "segment.name",
+            value: "Playlist name",
+            comment: "Placeholder in the playlist name text field"
+        )
+        $0.accessibilityLabel = CVPLocalized(
+            "segment.nameLabel",
+            value: "Playlist Name (optional)",
+            comment: "Field label above the playlist name text field"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
         $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.3)
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
@@ -73,60 +107,133 @@ final class SegmentPlaylistCreationViewController: UIViewController {
     }
 
     private let loopingLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.loopPlaylistLabel
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+        $0.text = CVPLocalized(
+            "segment.loopPlaylist",
+            value: "Loop playlist",
+            comment: "Label for the switch that repeats the playlist from the start"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
+        $0.numberOfLines = 0
     }
 
+    /// The switch sits next to a separate label, which VoiceOver has no way to associate with it,
+    /// so it carries the same text itself.
     private let loopingSwitch = UISwitch().configure {
         $0.onTintColor = VideoPlayerColor(palette: .red).uiColor
         $0.isOn = false
+        $0.accessibilityLabel = CVPLocalized(
+            "segment.loopPlaylist",
+            value: "Loop playlist",
+            comment: "Label for the switch that repeats the playlist from the start"
+        )
     }
 
     private let startLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.segmentStartLabel
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
+        $0.text = CVPLocalized("segment.start", value: "Start", comment: "Label for a segment's start timecode")
+        $0.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
     }
 
     private lazy var startTimecodeInput = TimecodeInputView(frameRate: frameRate)
 
+    /// "Set to Current Time" appears twice, so each button says which end of the segment it sets.
     private let setStartButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.setToCurrentTime, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 14)
+        $0.setTitle(
+            CVPLocalized(
+                "abloop.setToCurrentTime",
+                value: "Set to Current Time",
+                comment: "Button that copies the playhead position into a timecode field"
+            ),
+            for: .normal
+        )
+        $0.accessibilityLabel = CVPLocalized(
+            "segment.setStart.accessibility",
+            value: "Set the segment start to the current playback time",
+            comment: "VoiceOver label for the button that sets a segment's start"
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 14),
+            maximumPointSize: 20
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor.withAlphaComponent(0.7)
         $0.layer.cornerRadius = ABLoopConstants.UI.smallCornerRadius
     }
 
     private let endLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.segmentEndLabel
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
+        $0.text = CVPLocalized("segment.end", value: "End", comment: "Label for a segment's end timecode")
+        $0.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
     }
 
     private lazy var endTimecodeInput = TimecodeInputView(frameRate: frameRate)
 
     private let setEndButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.setToCurrentTime, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 14)
+        $0.setTitle(
+            CVPLocalized(
+                "abloop.setToCurrentTime",
+                value: "Set to Current Time",
+                comment: "Button that copies the playhead position into a timecode field"
+            ),
+            for: .normal
+        )
+        $0.accessibilityLabel = CVPLocalized(
+            "segment.setEnd.accessibility",
+            value: "Set the segment end to the current playback time",
+            comment: "VoiceOver label for the button that sets a segment's end"
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 14),
+            maximumPointSize: 20
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor.withAlphaComponent(0.7)
         $0.layer.cornerRadius = ABLoopConstants.UI.smallCornerRadius
     }
 
     private let addSegmentButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.addSegment, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueBold(ofSize: 15)
+        $0.setTitle(
+            CVPLocalized(
+                "segment.addSegment",
+                value: "Add Segment",
+                comment: "Button that appends the entered start and end to the playlist"
+            ),
+            for: .normal
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .subheadline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 15),
+            maximumPointSize: 21
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor.withAlphaComponent(0.7)
         $0.layer.cornerRadius = ABLoopConstants.UI.smallCornerRadius
     }
 
     private let segmentsHeaderLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.segmentsHeader
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
+        $0.text = CVPLocalized("segment.header", value: "Segments", comment: "Header above the segment list")
+        $0.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
+        $0.accessibilityTraits = .header
     }
 
     private let tableView = UITableView().configure {
@@ -136,23 +243,46 @@ final class SegmentPlaylistCreationViewController: UIViewController {
     }
 
     private let emptyStateLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.noSegmentsYet
-        $0.font = FontUtility.helveticaNeueLight(ofSize: 14)
+        $0.text = CVPLocalized(
+            "segment.empty",
+            value: "No segments yet. Add a start and end point above.",
+            comment: "Shown in place of the segment list while the playlist is empty"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: FontUtility.helveticaNeueLight(ofSize: 14),
+            maximumPointSize: 20
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .pearlWhite).uiColor
         $0.textAlignment = .center
+        $0.numberOfLines = 0
     }
 
     private let cancelButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.cancel, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+        $0.setTitle(
+            CVPLocalized("abloop.cancel", value: "Cancel", comment: "Button that closes a dialog without saving"),
+            for: .normal
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.5)
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
     }
 
     private let saveButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.savePlaylist, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueBold(ofSize: 16)
+        $0.setTitle(
+            CVPLocalized("segment.save", value: "Save Playlist", comment: "Button that saves the new playlist"),
+            for: .normal
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
@@ -201,7 +331,15 @@ final class SegmentPlaylistCreationViewController: UIViewController {
         setupTableView()
         setupActions()
         setupKeyboardHandling()
+        setupAccessibility()
         updateSegmentList()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Announce the new screen and land focus on its title rather than on whichever element
+        // happens to be first in the layout.
+        UIAccessibility.post(notification: .screenChanged, argument: titleLabel)
     }
 
     // MARK: - Setup
@@ -347,6 +485,17 @@ final class SegmentPlaylistCreationViewController: UIViewController {
         tableView.setEditing(true, animated: false)
     }
 
+    /// Exposes what the dialog's visual design implies: it covers the panel behind it, so VoiceOver
+    /// must not be able to wander back into it, and the segment list needs a name of its own.
+    private func setupAccessibility() {
+        containerView.accessibilityViewIsModal = true
+        tableView.accessibilityLabel = CVPLocalized(
+            "segment.list.accessibility",
+            value: "Segments in this playlist",
+            comment: "VoiceOver label for the list of segments being assembled"
+        )
+    }
+
     private func setupActions() {
         setStartButton.addTarget(self, action: #selector(setStartToCurrentTime), for: .touchUpInside)
         setEndButton.addTarget(self, action: #selector(setEndToCurrentTime), for: .touchUpInside)
@@ -420,19 +569,41 @@ final class SegmentPlaylistCreationViewController: UIViewController {
         guard let startPoint = startTimecodeInput.getTimecode(),
               let endPoint = endTimecodeInput.getTimecode() else {
             showAlert(
-                title: ABLoopConstants.Strings.invalidInputTitle,
-                message: ABLoopConstants.Strings.invalidSegmentMessage
+                title: CVPLocalized(
+                    "validation.invalidTitle",
+                    value: "Invalid Input",
+                    comment: "Title of the alert shown when a timecode cannot be read"
+                ),
+                message: CVPLocalized(
+                    "validation.invalidTimecodes",
+                    value: "Please enter valid timecodes.",
+                    comment: "Alert message shown when a timecode cannot be read"
+                )
             )
             return
         }
 
         if let message = ABLoopValidation.validateLoopRange(pointA: startPoint, pointB: endPoint).errorMessage {
-            showAlert(title: ABLoopConstants.Strings.invalidRangeTitle, message: message)
+            showAlert(
+                title: CVPLocalized(
+                    "validation.invalidRangeTitle",
+                    value: "Invalid Range",
+                    comment: "Title of the alert shown when the end does not come after the start"
+                ),
+                message: message
+            )
             return
         }
 
         if let message = durationErrorMessage(for: startPoint) ?? durationErrorMessage(for: endPoint) {
-            showAlert(title: ABLoopConstants.Strings.durationExceededTitle, message: message)
+            showAlert(
+                title: CVPLocalized(
+                    "validation.beyondDurationTitle",
+                    value: "Beyond Video End",
+                    comment: "Title of the alert shown when a point lies past the end of the video"
+                ),
+                message: message
+            )
             return
         }
 
@@ -443,32 +614,69 @@ final class SegmentPlaylistCreationViewController: UIViewController {
         startTimecodeInput.clear()
         endTimecodeInput.clear()
         updateSegmentList()
+
+        // Adding a segment only changes a list further down the dialog, which a VoiceOver user
+        // never sees; without an announcement the button appears to do nothing at all.
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: String(
+                format: CVPLocalized(
+                    "segment.added.accessibility",
+                    value: "Segment %d added",
+                    comment: "Announced after a segment is appended; %d is its 1-based position"
+                ),
+                segments.count
+            )
+        )
     }
 
     @objc private func cancelButtonTapped() {
-        dismiss(animated: true)
+        dismissDialog()
+    }
+
+    /// Single dismissal path, so the Reduce Motion decision is made in exactly one place.
+    private func dismissDialog() {
+        dismiss(animated: !UIAccessibility.isReduceMotionEnabled)
+    }
+
+    /// Makes the VoiceOver escape gesture (a two-finger Z) cancel the dialog.
+    override func accessibilityPerformEscape() -> Bool {
+        dismissDialog()
+        return true
     }
 
     @objc private func saveButtonTapped() {
         view.endEditing(true)
 
         let trimmedName = nameTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let defaultName = CVPLocalized(
+            "segment.defaultName",
+            value: "Segment Playlist",
+            comment: "Name given to a playlist the user did not name"
+        )
         let playlist = SegmentPlaylist(
-            name: trimmedName.isEmpty ? ABLoopConstants.Strings.defaultPlaylistName : trimmedName,
+            name: trimmedName.isEmpty ? defaultName : trimmedName,
             segments: segments,
             videoIdentifier: videoIdentifier,
             isLooping: loopingSwitch.isOn
         )
 
         if let message = ABLoopValidation.validateSegmentPlaylist(playlist).errorMessage {
-            showAlert(title: ABLoopConstants.Strings.invalidPlaylistTitle, message: message)
+            showAlert(
+                title: CVPLocalized(
+                    "validation.invalidPlaylistTitle",
+                    value: "Invalid Playlist",
+                    comment: "Title of the alert shown when a playlist cannot be saved"
+                ),
+                message: message
+            )
             return
         }
 
         abLoopManager.addSegmentPlaylist(playlist, for: videoIdentifier)
         delegate?.didCreateSegmentPlaylist(playlist)
 
-        dismiss(animated: true)
+        dismissDialog()
     }
 
     @objc private func dismissKeyboard() {
@@ -478,7 +686,7 @@ final class SegmentPlaylistCreationViewController: UIViewController {
     @objc private func keyboardWillShow(notification: NSNotification) {
         if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue {
             let keyboardHeight = keyboardFrame.cgRectValue.height
-            UIView.animate(withDuration: ABLoopConstants.Animation.duration) {
+            UIView.animate(withDuration: keyboardAnimationDuration) {
                 self.containerView.transform = CGAffineTransform(
                     translationX: 0,
                     y: -keyboardHeight / ABLoopConstants.Animation.keyboardOffsetDivisor
@@ -488,9 +696,17 @@ final class SegmentPlaylistCreationViewController: UIViewController {
     }
 
     @objc private func keyboardWillHide(notification: NSNotification) {
-        UIView.animate(withDuration: ABLoopConstants.Animation.duration) {
+        UIView.animate(withDuration: keyboardAnimationDuration) {
             self.containerView.transform = .identity
         }
+    }
+
+    /// Duration for the keyboard-avoidance shift.
+    ///
+    /// Zero under Reduce Motion: the dialog still has to move out of the keyboard's way, but it
+    /// does so instantly rather than sliding.
+    private var keyboardAnimationDuration: TimeInterval {
+        UIAccessibility.isReduceMotionEnabled ? 0 : ABLoopConstants.Animation.duration
     }
 
     // MARK: - Helper Methods
@@ -515,15 +731,25 @@ final class SegmentPlaylistCreationViewController: UIViewController {
     /// - Parameter segment: Segment to describe
     /// - Returns: Title and detail strings for the cell
     private func displayString(for segment: PlaybackSegment) -> (title: String, detail: String) {
-        let title = segment.name ?? String(format: ABLoopConstants.Strings.segmentNameFormat, segment.order + 1)
+        let title = segment.name ?? String(
+            format: CVPLocalized(
+                "segment.rowTitle",
+                value: "Segment %d",
+                comment: "Segment row title; %d is the segment's 1-based position in the playlist"
+            ),
+            segment.order + 1
+        )
         let detail = "\(segment.startPoint.toString()) → \(segment.endPoint.toString())"
         return (title, detail)
     }
 
     private func showAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: ABLoopConstants.Strings.okAction, style: .default))
-        present(alert, animated: true)
+        alert.addAction(UIAlertAction(
+            title: CVPLocalized("validation.ok", value: "OK", comment: "Button that dismisses a validation alert"),
+            style: .default
+        ))
+        present(alert, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     deinit {

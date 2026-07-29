@@ -52,12 +52,6 @@ public enum ABLoopConstants {
         /// Small button height
         static let smallButtonHeight: CGFloat = 36
 
-        /// Timecode input field width
-        static let timecodeFieldWidth: CGFloat = 50
-
-        /// Timecode input field height
-        static let timecodeFieldHeight: CGFloat = 40
-
         /// Corner radius for buttons and inputs
         static let cornerRadius: CGFloat = 8
 
@@ -68,15 +62,6 @@ public enum ABLoopConstants {
     // MARK: - Validation
 
     enum Validation {
-        /// Maximum hours value
-        static let maxHours = 23
-
-        /// Maximum minutes value
-        static let maxMinutes = 59
-
-        /// Maximum seconds value
-        static let maxSeconds = 59
-
         /// Maximum timecode input length
         static let maxInputLength = 2
     }
@@ -105,6 +90,13 @@ public enum ABLoopConstants {
         static let loopNamePlaceholder = "Enter loop name"
         static let pointALabel = "Point A (Start)"
         static let pointBLabel = "Point B (End)"
+
+        /// Format hint shown under a timecode field.
+        ///
+        /// Kept although `TimecodeInputView` still spells the same text inline: it is the
+        /// canonical copy for that label, it has a counterpart key
+        /// (`abloop.timecodeFormat`) in `Localizable.strings`, and the view is expected to
+        /// adopt it when its strings are localized.
         static let timecodeFormat = "HH:MM:SS:FF"
         static let playlistNameLabel = "Playlist Name (optional)"
         static let playlistNamePlaceholder = "Enter playlist name"
@@ -142,9 +134,6 @@ public enum ABLoopConstants {
     enum Animation {
         /// Standard animation duration
         static let duration: TimeInterval = 0.3
-
-        /// Quick animation duration
-        static let quickDuration: TimeInterval = 0.25
 
         /// Keyboard animation offset divisor
         static let keyboardOffsetDivisor: CGFloat = 4

@@ -13,6 +13,13 @@ A feature-rich video player with custom playback controls, subtitle and video qu
 - **Subtitle Selection**
 - **Video Quality Selection**
 - **Live Stream Support**
+- **Variable Playback Speed** — 0.5x to 2.0x, with pitch correction
+- **Picture-in-Picture**
+- **AirPlay**
+- **Lock Screen & Control Center Controls** — Now Playing info, play/pause and ±15s skip
+- **A-B Repeat Loops** — loop between two timecodes, persisted per video
+- **Segment Playlists** — play a sequence of segments in order, optionally looping
+- **Accessibility Support** — VoiceOver labels, Dynamic Type, and reduced motion
 - **Error Handling**
 
 ## Requirements

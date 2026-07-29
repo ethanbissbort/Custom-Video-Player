@@ -33,24 +33,52 @@ class ABLoopViewController: UIViewController {
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
     }
 
+    /// Dynamic Type is capped here (and on the other labels in this panel) because the container
+    /// has a fixed height: text has to follow the user's size setting without spilling out of it.
     private let titleLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.abLoopTitle
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 20)
+        $0.text = CVPLocalized(
+            "abloop.panel.title",
+            value: "A-B Loop & Segments",
+            comment: "Title of the panel listing saved A-B loops and segment playlists"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .title3).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 20),
+            maximumPointSize: 28
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
         $0.textAlignment = .center
+        $0.numberOfLines = 0
+        $0.accessibilityTraits = .header
     }
 
+    /// The glyph is decorative — "✕" is read out as "multiplication sign" — so the button carries
+    /// a real label for VoiceOver.
     private let closeButton = UIButton().configure {
         $0.setTitle("✕", for: .normal)
         $0.titleLabel?.font = FontUtility.helveticaNeueBold(ofSize: 24)
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
+        $0.accessibilityLabel = CVPLocalized(
+            "abloop.close.accessibility",
+            value: "Close",
+            comment: "VoiceOver label for the button that closes the A-B loop panel"
+        )
     }
 
     private lazy var segmentedControl: UISegmentedControl = {
         let control = UISegmentedControl(items: [
-            ABLoopConstants.Strings.abLoopsSegment,
-            ABLoopConstants.Strings.segmentPlaylistsSegment
+            CVPLocalized("abloop.title", value: "A-B Loops", comment: "Segmented control tab listing A-B loops"),
+            CVPLocalized(
+                "abloop.segment.title",
+                value: "Segment Playlists",
+                comment: "Segmented control tab listing segment playlists"
+            )
         ])
+        control.accessibilityLabel = CVPLocalized(
+            "abloop.mode.accessibility",
+            value: "List to show",
+            comment: "VoiceOver label for the control that switches between loops and playlists"
+        )
         control.selectedSegmentIndex = 0
         control.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.5)
         control.selectedSegmentTintColor = VideoPlayerColor(palette: .red).uiColor
@@ -66,15 +94,26 @@ class ABLoopViewController: UIViewController {
     }
 
     private let createButton = UIButton().configure {
-        $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
     }
 
     private let stopLoopButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.stopLoop, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+        $0.setTitle(
+            CVPLocalized("abloop.stopLoop", value: "Stop Loop", comment: "Button that deactivates the running loop"),
+            for: .normal
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.5)
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
@@ -120,7 +159,15 @@ class ABLoopViewController: UIViewController {
         setupViews()
         setupTableView()
         setupActions()
+        setupAccessibility()
         updateUI()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // A panel presented over the player is a new screen as far as VoiceOver is concerned;
+        // without this, focus stays on the transport control the user came from.
+        UIAccessibility.post(notification: .screenChanged, argument: titleLabel)
     }
 
     // MARK: - Setup
@@ -188,6 +235,14 @@ class ABLoopViewController: UIViewController {
         tableView.register(ABLoopTableViewCell.self, forCellReuseIdentifier: "ABLoopCell")
     }
 
+    /// Exposes what the panel's visual design implies: the card is modal, and the dimmed backdrop
+    /// that dismisses it on tap is invisible to VoiceOver, so escape has to be provided explicitly
+    /// (see `accessibilityPerformEscape()`).
+    private func setupAccessibility() {
+        containerView.accessibilityViewIsModal = true
+        // The table's label depends on the selected mode and is set in `updateUI()`.
+    }
+
     private func setupActions() {
         closeButton.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
         createButton.addTarget(self, action: #selector(createButtonTapped), for: .touchUpInside)
@@ -202,15 +257,71 @@ class ABLoopViewController: UIViewController {
     // MARK: - UI Updates
 
     private func updateUI() {
-        createButton.setTitle(viewModel.createButtonTitle, for: .normal)
+        createButton.setTitle(createButtonTitle, for: .normal)
         stopLoopButton.isHidden = !viewModel.hasActiveLoopOrPlaylist
+        // The table shows a different collection in each mode, so its VoiceOver label has to
+        // follow the segmented control rather than being set once.
+        tableView.accessibilityLabel = listAccessibilityLabel
         tableView.reloadData()
+    }
+
+    /// Localized title for the create button in the current mode.
+    ///
+    /// Deliberately resolved here rather than through `ABLoopViewModel.createButtonTitle`: the
+    /// view model's version returns the untranslated constant.
+    private var createButtonTitle: String {
+        switch viewModel.currentMode {
+        case .abLoop:
+            return CVPLocalized(
+                "abloop.create",
+                value: "Create New A-B Loop",
+                comment: "Button that opens the A-B loop creation dialog"
+            )
+        case .segmentPlaylist:
+            return CVPLocalized(
+                "abloop.createSegmentPlaylist",
+                value: "Create Segment Playlist",
+                comment: "Button that opens the segment playlist creation dialog"
+            )
+        }
+    }
+
+    /// VoiceOver label for the list, matching whichever collection is on screen.
+    private var listAccessibilityLabel: String {
+        switch viewModel.currentMode {
+        case .abLoop:
+            return CVPLocalized(
+                "abloop.list.accessibility",
+                value: "Saved A-B loops",
+                comment: "VoiceOver label for the list of saved A-B loops"
+            )
+        case .segmentPlaylist:
+            return CVPLocalized(
+                "abloop.segmentList.accessibility",
+                value: "Saved segment playlists",
+                comment: "VoiceOver label for the list of saved segment playlists"
+            )
+        }
     }
 
     // MARK: - Actions
 
     @objc private func closeButtonTapped() {
-        dismiss(animated: true)
+        dismissPanel()
+    }
+
+    /// Single dismissal path, so the Reduce Motion decision is made in exactly one place.
+    private func dismissPanel() {
+        dismiss(animated: !UIAccessibility.isReduceMotionEnabled)
+    }
+
+    /// Makes the VoiceOver escape gesture (a two-finger Z) close the panel.
+    ///
+    /// The backdrop tap that dismisses it is not reachable with VoiceOver on, and the close
+    /// button can be a long swipe away from wherever focus happens to be.
+    override func accessibilityPerformEscape() -> Bool {
+        dismissPanel()
+        return true
     }
 
     @objc private func createButtonTapped() {
@@ -237,7 +348,7 @@ class ABLoopViewController: UIViewController {
     @objc private func backgroundTapped(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: view)
         if !containerView.frame.contains(location) {
-            dismiss(animated: true)
+            dismissPanel()
         }
     }
 
@@ -255,8 +366,10 @@ class ABLoopViewController: UIViewController {
         )
         creationViewController.delegate = self
         creationViewController.modalPresentationStyle = .overFullScreen
+        // A cross dissolve is the gentlest of the built-in transitions, and it is skipped outright
+        // under Reduce Motion by presenting without animation.
         creationViewController.modalTransitionStyle = .crossDissolve
-        present(creationViewController, animated: true)
+        present(creationViewController, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     private func presentSegmentPlaylistCreationDialog() {
@@ -270,7 +383,7 @@ class ABLoopViewController: UIViewController {
             abLoopManager: viewModel.abLoopManager
         )
         creationViewController.delegate = self
-        present(creationViewController, animated: true)
+        present(creationViewController, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     /// Updates the current player time (called from parent when time changes)
@@ -398,7 +511,7 @@ extension ABLoopViewController: UITableViewDelegate, UITableViewDataSource {
         }
 
         updateUI()
-        dismiss(animated: true)
+        dismissPanel()
     }
 
     func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
@@ -452,12 +565,20 @@ extension ABLoopViewController: SegmentPlaylistCreationViewControllerDelegate {
 
 class ABLoopTableViewCell: UITableViewCell {
     private let titleLabel = UILabel().configure {
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
+        $0.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
     }
 
     private let detailLabel = UILabel().configure {
-        $0.font = FontUtility.helveticaNeueLight(ofSize: 14)
+        $0.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: FontUtility.helveticaNeueLight(ofSize: 14),
+            maximumPointSize: 20
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .pearlWhite).uiColor
     }
 
@@ -507,5 +628,21 @@ class ABLoopTableViewCell: UITableViewCell {
         titleLabel.text = title
         detailLabel.text = detail
         activeIndicator.isHidden = !isActive
+
+        // The row is read as a single element: two separate labels plus a coloured dot would make
+        // a VoiceOver user swipe three times to learn what one row says, and the dot — the only
+        // thing marking the running loop — carries no text at all.
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        let components: [String?] = [
+            title,
+            detail,
+            isActive ? CVPLocalized(
+                "abloop.active.accessibility",
+                value: "Active",
+                comment: "VoiceOver suffix marking the loop or playlist that is currently running"
+            ) : nil,
+        ]
+        accessibilityLabel = components.compactMap { $0 }.joined(separator: ", ")
     }
 }

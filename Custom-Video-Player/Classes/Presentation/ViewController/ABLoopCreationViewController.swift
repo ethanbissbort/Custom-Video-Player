@@ -36,22 +36,56 @@ class ABLoopCreationViewController: UIViewController {
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
     }
 
+    /// Dynamic Type is applied with a cap throughout this dialog: it sizes itself to its content,
+    /// so text may grow, but an uncapped accessibility size would push the buttons off screen.
     private let titleLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.createLoopTitle
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 20)
+        $0.text = CVPLocalized(
+            "abloop.createTitle",
+            value: "Create A-B Loop",
+            comment: "Title of the dialog for creating an A-B loop"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .title3).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 20),
+            maximumPointSize: 28
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
         $0.textAlignment = .center
+        $0.numberOfLines = 0
+        $0.accessibilityTraits = .header
     }
 
     private let nameLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.loopNameLabel
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 14)
+        $0.text = CVPLocalized(
+            "abloop.nameLabel",
+            value: "Loop Name (optional)",
+            comment: "Field label above the A-B loop name text field"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 14),
+            maximumPointSize: 20
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .pearlWhite).uiColor
+        $0.numberOfLines = 0
     }
 
     private let nameTextField = UITextField().configure {
-        $0.placeholder = ABLoopConstants.Strings.loopNamePlaceholder
-        $0.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+        $0.placeholder = CVPLocalized(
+            "abloop.namePlaceholder",
+            value: "Loop name (optional)",
+            comment: "Placeholder in the A-B loop name text field"
+        )
+        $0.accessibilityLabel = CVPLocalized(
+            "abloop.nameLabel",
+            value: "Loop Name (optional)",
+            comment: "Field label above the A-B loop name text field"
+        )
+        $0.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
         $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.3)
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
@@ -60,48 +94,105 @@ class ABLoopCreationViewController: UIViewController {
     }
 
     private let pointALabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.pointALabel
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
+        $0.text = CVPLocalized("abloop.pointA", value: "Point A", comment: "Label for the loop's start point")
+        $0.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
     }
 
     private lazy var pointATimecodeInput = TimecodeInputView(frameRate: frameRate)
 
+    /// "Set to Current Time" appears twice, so each button says which point it sets — a VoiceOver
+    /// user swiping through the form otherwise hears the same sentence twice with nothing to tell
+    /// the two apart.
     private let setPointAButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.setToCurrentTime, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 14)
+        $0.setTitle(
+            CVPLocalized(
+                "abloop.setToCurrentTime",
+                value: "Set to Current Time",
+                comment: "Button that copies the playhead position into a timecode field"
+            ),
+            for: .normal
+        )
+        $0.accessibilityLabel = CVPLocalized(
+            "abloop.setPointA.accessibility",
+            value: "Set point A to the current playback time",
+            comment: "VoiceOver label for the button that sets point A"
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 14),
+            maximumPointSize: 20
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor.withAlphaComponent(0.7)
         $0.layer.cornerRadius = ABLoopConstants.UI.smallCornerRadius
     }
 
     private let pointBLabel = UILabel().configure {
-        $0.text = ABLoopConstants.Strings.pointBLabel
-        $0.font = FontUtility.helveticaNeueBold(ofSize: 16)
+        $0.text = CVPLocalized("abloop.pointB", value: "Point B", comment: "Label for the loop's end point")
+        $0.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.adjustsFontForContentSizeCategory = true
         $0.textColor = VideoPlayerColor(palette: .white).uiColor
     }
 
     private lazy var pointBTimecodeInput = TimecodeInputView(frameRate: frameRate)
 
     private let setPointBButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.setToCurrentTime, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 14)
+        $0.setTitle(
+            CVPLocalized(
+                "abloop.setToCurrentTime",
+                value: "Set to Current Time",
+                comment: "Button that copies the playhead position into a timecode field"
+            ),
+            for: .normal
+        )
+        $0.accessibilityLabel = CVPLocalized(
+            "abloop.setPointB.accessibility",
+            value: "Set point B to the current playback time",
+            comment: "VoiceOver label for the button that sets point B"
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 14),
+            maximumPointSize: 20
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor.withAlphaComponent(0.7)
         $0.layer.cornerRadius = ABLoopConstants.UI.smallCornerRadius
     }
 
     private let cancelButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.cancel, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueRegular(ofSize: 16)
+        $0.setTitle(
+            CVPLocalized("abloop.cancel", value: "Cancel", comment: "Button that closes a dialog without saving"),
+            for: .normal
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: FontUtility.helveticaNeueRegular(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .black).uiColor.withAlphaComponent(0.5)
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
     }
 
     private let createButton = UIButton().configure {
-        $0.setTitle(ABLoopConstants.Strings.createLoop, for: .normal)
-        $0.titleLabel?.font = FontUtility.helveticaNeueBold(ofSize: 16)
+        $0.setTitle(
+            CVPLocalized("abloop.createLoop", value: "Create Loop", comment: "Button that saves the new A-B loop"),
+            for: .normal
+        )
+        $0.titleLabel?.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+            for: FontUtility.helveticaNeueBold(ofSize: 16),
+            maximumPointSize: 22
+        )
+        $0.titleLabel?.adjustsFontForContentSizeCategory = true
         $0.setTitleColor(VideoPlayerColor(palette: .white).uiColor, for: .normal)
         $0.backgroundColor = VideoPlayerColor(palette: .red).uiColor
         $0.layer.cornerRadius = ABLoopConstants.UI.cornerRadius
@@ -147,6 +238,16 @@ class ABLoopCreationViewController: UIViewController {
         setupViews()
         setupActions()
         setupKeyboardHandling()
+        // The dialog covers everything behind it, so VoiceOver must not be able to wander into
+        // the panel it was opened from.
+        containerView.accessibilityViewIsModal = true
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Announce the new screen and land focus on its title rather than on whichever element
+        // happens to be first in the layout.
+        UIAccessibility.post(notification: .screenChanged, argument: titleLabel)
     }
 
     // MARK: - Setup
@@ -276,7 +377,18 @@ class ABLoopCreationViewController: UIViewController {
     }
 
     @objc private func cancelButtonTapped() {
-        dismiss(animated: true)
+        dismissDialog()
+    }
+
+    /// Single dismissal path, so the Reduce Motion decision is made in exactly one place.
+    private func dismissDialog() {
+        dismiss(animated: !UIAccessibility.isReduceMotionEnabled)
+    }
+
+    /// Makes the VoiceOver escape gesture (a two-finger Z) cancel the dialog.
+    override func accessibilityPerformEscape() -> Bool {
+        dismissDialog()
+        return true
     }
 
     @objc private func createButtonTapped() {
@@ -285,19 +397,41 @@ class ABLoopCreationViewController: UIViewController {
         guard let pointA = pointATimecodeInput.getTimecode(),
               let pointB = pointBTimecodeInput.getTimecode() else {
             showAlert(
-                title: ABLoopConstants.Strings.invalidInputTitle,
-                message: ABLoopConstants.Strings.invalidInputMessage
+                title: CVPLocalized(
+                    "validation.invalidTitle",
+                    value: "Invalid Input",
+                    comment: "Title of the alert shown when a timecode cannot be read"
+                ),
+                message: CVPLocalized(
+                    "validation.invalidTimecodes",
+                    value: "Please enter valid timecodes.",
+                    comment: "Alert message shown when a timecode cannot be read"
+                )
             )
             return
         }
 
         if let message = ABLoopValidation.validateLoopRange(pointA: pointA, pointB: pointB).errorMessage {
-            showAlert(title: ABLoopConstants.Strings.invalidRangeTitle, message: message)
+            showAlert(
+                title: CVPLocalized(
+                    "validation.invalidRangeTitle",
+                    value: "Invalid Range",
+                    comment: "Title of the alert shown when point B does not come after point A"
+                ),
+                message: message
+            )
             return
         }
 
         if let message = durationErrorMessage(for: pointA) ?? durationErrorMessage(for: pointB) {
-            showAlert(title: ABLoopConstants.Strings.durationExceededTitle, message: message)
+            showAlert(
+                title: CVPLocalized(
+                    "validation.beyondDurationTitle",
+                    value: "Beyond Video End",
+                    comment: "Title of the alert shown when a point lies past the end of the video"
+                ),
+                message: message
+            )
             return
         }
 
@@ -312,7 +446,7 @@ class ABLoopCreationViewController: UIViewController {
         abLoopManager.addABLoop(abLoop, for: videoIdentifier)
         delegate?.didCreateABLoop(abLoop)
 
-        dismiss(animated: true)
+        dismissDialog()
     }
 
     @objc private func dismissKeyboard() {
@@ -322,7 +456,7 @@ class ABLoopCreationViewController: UIViewController {
     @objc private func keyboardWillShow(notification: NSNotification) {
         if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue {
             let keyboardHeight = keyboardFrame.cgRectValue.height
-            UIView.animate(withDuration: ABLoopConstants.Animation.duration) {
+            UIView.animate(withDuration: keyboardAnimationDuration) {
                 self.containerView.transform = CGAffineTransform(
                     translationX: 0,
                     y: -keyboardHeight / ABLoopConstants.Animation.keyboardOffsetDivisor
@@ -332,9 +466,17 @@ class ABLoopCreationViewController: UIViewController {
     }
 
     @objc private func keyboardWillHide(notification: NSNotification) {
-        UIView.animate(withDuration: ABLoopConstants.Animation.duration) {
+        UIView.animate(withDuration: keyboardAnimationDuration) {
             self.containerView.transform = .identity
         }
+    }
+
+    /// Duration for the keyboard-avoidance shift.
+    ///
+    /// Zero under Reduce Motion: the dialog still has to move out of the keyboard's way, but it
+    /// does so instantly rather than sliding.
+    private var keyboardAnimationDuration: TimeInterval {
+        UIAccessibility.isReduceMotionEnabled ? 0 : ABLoopConstants.Animation.duration
     }
 
     // MARK: - Helper Methods
@@ -352,8 +494,11 @@ class ABLoopCreationViewController: UIViewController {
 
     private func showAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: ABLoopConstants.Strings.okAction, style: .default))
-        present(alert, animated: true)
+        alert.addAction(UIAlertAction(
+            title: CVPLocalized("validation.ok", value: "OK", comment: "Button that dismisses a validation alert"),
+            style: .default
+        ))
+        present(alert, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     deinit {

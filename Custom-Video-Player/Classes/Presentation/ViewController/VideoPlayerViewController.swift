@@ -1,6 +1,7 @@
 import UIKit
 import AVKit
 import AVFoundation
+import MediaAccessibility
 import MediaPlayer
 import os
 
@@ -69,13 +70,43 @@ public class VideoPlayerViewController: UIViewController {
     var subtitleSelectionView: SubtitleSelectionViewController?
     var qualitySelectionView: QualitySelectionViewController?
     
-    // Custom Subtitle Styling
-    private let subtitleStyling = AVTextStyleRule(textMarkupAttributes: [
-        kCMTextMarkupAttribute_CharacterBackgroundColorARGB as String: [0.0, 0.0, 0.0, 0.4],
-        kCMTextMarkupAttribute_ForegroundColorARGB as String: [1.0, 1.0, 1.0, 1.0],
-        kCMTextMarkupAttribute_FontFamilyName as String: UIFont.preferredFont(forTextStyle: .body).fontName,
-    ])
-    
+    /// The library's own caption styling: white body text on a 40%-black plate.
+    ///
+    /// Built on demand rather than stored, because it must only ever reach the player item when
+    /// `shouldApplyCustomSubtitleStyling` allows it — see that property for why applying it
+    /// unconditionally is an accessibility failure.
+    private static func makeSubtitleStyleRule() -> AVTextStyleRule? {
+        AVTextStyleRule(textMarkupAttributes: [
+            kCMTextMarkupAttribute_CharacterBackgroundColorARGB as String: [0.0, 0.0, 0.0, 0.4],
+            kCMTextMarkupAttribute_ForegroundColorARGB as String: [1.0, 1.0, 1.0, 1.0],
+            kCMTextMarkupAttribute_FontFamilyName as String: UIFont.preferredFont(forTextStyle: .body).fontName,
+        ])
+    }
+
+    /// Whether the library may impose its own caption styling on the player item.
+    ///
+    /// `AVTextStyleRule` *overrides* the system caption appearance, so applying one
+    /// unconditionally silently discards whatever the user configured in
+    /// Settings › Accessibility › Subtitles & Captioning — the large yellow captions somebody set
+    /// up because they cannot read small white ones get quietly replaced with small white ones.
+    ///
+    /// Three signals are consulted, cheapest first, and any one of them hands control back to the
+    /// system:
+    /// * `UIAccessibility.isClosedCaptioningEnabled` — the "Closed Captions + SDH" master switch.
+    /// * `MACaptionAppearanceGetDisplayType(.user)` — anything other than `.automatic` means the
+    ///   user pinned captions on (or to forced-only) rather than leaving the default in place.
+    /// * The behavior reported alongside the user's relative character size: `.useValue` means the
+    ///   size came from a preference the user actually set, not from a system default, which is
+    ///   the tell-tale of a customised caption style.
+    private var shouldApplyCustomSubtitleStyling: Bool {
+        guard !UIAccessibility.isClosedCaptioningEnabled else { return false }
+        guard MACaptionAppearanceGetDisplayType(.user) == .automatic else { return false }
+
+        var characterSizeBehavior = MACaptionAppearanceBehavior.useContentIfAvailable
+        _ = MACaptionAppearanceGetRelativeCharacterSize(.user, &characterSizeBehavior)
+        return characterSizeBehavior != .useValue
+    }
+
     // `internal` (not `private`): accessed from VideoPlayerViewController+ErrorHandling.swift,
     // which is a separate file, so `private` would not compile.
     let activityIndicatorView = UIActivityIndicatorView().configure {
@@ -114,6 +145,16 @@ public class VideoPlayerViewController: UIViewController {
         super.viewDidLoad()
         resetOrientation(UIInterfaceOrientationMask.landscapeRight)
         NotificationCenter.default.addObserver(self, selector: #selector(appMovedToBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        // Owned for the controller's lifetime, exactly like the app-lifecycle observer above:
+        // registered once here and removed once in `deinit`, deliberately *not* in
+        // `removeObservers()`, which re-runs on every video switch and would leave this one
+        // unregistered for the rest of the session.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(voiceOverStatusDidChange),
+            name: UIAccessibility.voiceOverStatusDidChangeNotification,
+            object: nil
+        )
         abLoopManager.delegate = self
         // Registered once for the controller's lifetime and removed in `deinit`, deliberately not
         // in `removeObservers()`: the command centre is a singleton shared with the host app, and
@@ -170,6 +211,13 @@ public class VideoPlayerViewController: UIViewController {
         NotificationCenter.default.removeObserver(
             self,
             name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        // Matching removal for the VoiceOver observer registered in `viewDidLoad()`. Safe even
+        // when the view never loaded: removing an observer that was never added is a no-op.
+        NotificationCenter.default.removeObserver(
+            self,
+            name: UIAccessibility.voiceOverStatusDidChangeNotification,
             object: nil
         )
 
@@ -239,7 +287,10 @@ extension VideoPlayerViewController {
         activateAudioSession()
         activityIndicatorView.startAnimating()
         playerItem = AVPlayerItem(url: videoURL)
-        if let subtitleStyling = subtitleStyling {
+        // Only style captions the user has not styled themselves — see
+        // `shouldApplyCustomSubtitleStyling`. Leaving `textStyleRules` untouched is what lets the
+        // system caption appearance through.
+        if shouldApplyCustomSubtitleStyling, let subtitleStyling = VideoPlayerViewController.makeSubtitleStyleRule() {
             playerItem?.textStyleRules = [subtitleStyling]
         }
         // `.timeDomain` keeps pitch natural when the rate is changed, which is what makes 0.5x
@@ -303,6 +354,46 @@ extension VideoPlayerViewController {
         }
         subtitleSelectionView = SubtitleSelectionViewController(viewModel: .init(supportedLanguages: supportedLanguages))
         subtitleSelectionView?.delegate = self
+    }
+
+    /// Turns captions on by itself when the system says the user needs them.
+    ///
+    /// `UIAccessibility.isClosedCaptioningEnabled` reflects the "Closed Captions + SDH" switch in
+    /// Settings › Accessibility › Subtitles & Captioning. Somebody who has turned that on has
+    /// already told the system they cannot rely on the audio; making them open the subtitle sheet
+    /// and hunt for a track on every single video asks them to say it a second time.
+    ///
+    /// A track carrying subtitles for the deaf and hard of hearing wins over a plain subtitle
+    /// track, because it also describes music and sound effects — which is the point of the
+    /// setting being on. Language preference comes from `Locale.current` via
+    /// `AVMediaSelectionGroup`, falling back to the group's own options when nothing matches.
+    ///
+    /// Nothing is selected if a track is already selected, so this can never override a choice the
+    /// user made in the sheet.
+    private func selectLegibleTrackForClosedCaptioning() {
+        guard UIAccessibility.isClosedCaptioningEnabled,
+              let playerItem = playerItem,
+              let legibleGroup = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible),
+              playerItem.currentMediaSelection.selectedMediaOption(in: legibleGroup) == nil
+        else {
+            return
+        }
+
+        let preferredOptions = AVMediaSelectionGroup.mediaSelectionOptions(
+            from: legibleGroup.options,
+            with: Locale.current
+        )
+        let candidates = preferredOptions.isEmpty ? legibleGroup.options : preferredOptions
+        let selectedOption = candidates.first {
+            $0.hasMediaCharacteristic(.describesMusicAndSoundForAccessibility)
+        } ?? candidates.first
+
+        guard let selectedOption = selectedOption else { return }
+
+        playerItem.select(selectedOption, in: legibleGroup)
+        // Keep the sheet in step, so opening it shows the track that is actually playing rather
+        // than "Off".
+        subtitleSelectionView?.selectTrack(selectedOption)
     }
     
     func setupQualitySelectionView() {
@@ -921,6 +1012,8 @@ extension VideoPlayerViewController {
             setupControls()
         }
         didSetupControls = true
+        // After `setupControls()`, which is what builds the subtitle sheet this keeps in step.
+        selectLegibleTrackForClosedCaptioning()
         showControls()
     }
 }
@@ -935,35 +1028,74 @@ extension VideoPlayerViewController {
     
     private func showControls() {
         playerControlsView.isHidden = false
-        
-        UIView.animate(withDuration: 0.25) {
+
+        UIView.animate(withDuration: controlsFadeDuration) {
             self.playerControlsView.alpha = 1
         }
         resetControlsHiddenTimer()
+        // The controls have just entered the accessibility tree; without this VoiceOver keeps
+        // reporting the screen it saw while they were hidden.
+        UIAccessibility.post(notification: .layoutChanged, argument: nil)
     }
-    
+
     @objc func hideControls() {
-        UIView.animate(withDuration: 0.25) {
+        UIView.animate(withDuration: controlsFadeDuration) {
             self.playerControlsView.alpha = 0
         } completion: { _ in
             self.playerControlsView.isHidden = true
         }
     }
-    
+
+    /// Duration of the controls' fade, or `0` when the user has asked for reduced motion.
+    ///
+    /// A fade is a small effect, but it is still animation the user opted out of; skipping it
+    /// keeps the same start and end state without the transition.
+    private var controlsFadeDuration: TimeInterval {
+        UIAccessibility.isReduceMotionEnabled ? 0 : 0.25
+    }
+
+    /// Restarts the inactivity countdown that hides the controls.
+    ///
+    /// Deliberately schedules nothing while VoiceOver is running: a VoiceOver user explores the
+    /// screen by dragging over it, and there is no touch to reset this timer while they do, so the
+    /// controls would disappear out from under the exploring finger three seconds in. Sighted
+    /// users get the auto-hide; VoiceOver users keep the controls until they dismiss them with a
+    /// tap. `voiceOverStatusDidChange()` re-evaluates this when the setting is toggled mid-session.
     func resetControlsHiddenTimer() {
         invalidateControlsHiddenTimer()
+        guard !UIAccessibility.isVoiceOverRunning else { return }
         controlsHiddenTimer = Timer.scheduledTimer(timeInterval: controlsHideDelay,
                                                    target: self,
                                                    selector: #selector(hideControlsDueToInactivity), userInfo: nil, repeats: false)
     }
-    
+
     func invalidateControlsHiddenTimer() {
         controlsHiddenTimer?.invalidate()
         controlsHiddenTimer = nil
     }
-    
+
     @objc private func hideControlsDueToInactivity() {
+        // Belt and braces: `resetControlsHiddenTimer()` will not schedule this while VoiceOver is
+        // running, but VoiceOver can be switched on inside the three seconds between scheduling
+        // and firing.
+        guard !UIAccessibility.isVoiceOverRunning else { return }
         hideControls()
+    }
+
+    /// Brings the auto-hide in line with VoiceOver being switched on or off mid-session.
+    ///
+    /// Turning VoiceOver on cancels a countdown that is already running and puts the controls back
+    /// on screen; turning it off restores the ordinary inactivity behaviour.
+    @objc private func voiceOverStatusDidChange() {
+        if UIAccessibility.isVoiceOverRunning {
+            invalidateControlsHiddenTimer()
+            // Only meaningful once the controls exist; before that `didSetupControls` is false and
+            // the initial-load path shows them itself.
+            guard didSetupControls else { return }
+            showControls()
+        } else {
+            resetControlsHiddenTimer()
+        }
     }
 }
 
